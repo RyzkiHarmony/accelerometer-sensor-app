@@ -1,0 +1,143 @@
+package com.pemalang.roaddamage.recording
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.hardware.SensorManager
+import android.location.Location
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.pemalang.roaddamage.R
+import com.pemalang.roaddamage.data.prefs.UserPrefs
+import com.pemalang.roaddamage.model.SensorReading
+import com.pemalang.roaddamage.sensors.AccelerometerHandler
+import com.pemalang.roaddamage.sensors.GPSHandler
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+
+@AndroidEntryPoint
+class RecordingService : Service() {
+    @Inject lateinit var userPrefs: UserPrefs
+    @Inject lateinit var repository: RecordingRepository
+
+    private var scope: CoroutineScope? = null
+    private var accel: AccelerometerHandler? = null
+    private var gps: GPSHandler? = null
+    private var collectingJob: Job? = null
+    private var latestLocation: Location? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action == ACTION_START) {
+            startRecording()
+            return START_STICKY
+        }
+        if (action == ACTION_STOP) {
+            stopRecording()
+            return START_NOT_STICKY
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun startRecording() {
+        createChannel()
+        startForeground(NOTIF_ID, buildNotification("Merekam data"))
+        val sManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val samplingHz = runBlocking { userPrefs.getSamplingRateHz() }
+        val samplingUs = (1_000_000 / samplingHz).coerceAtLeast(5_000)
+        val gpsInterval = runBlocking { userPrefs.getGpsIntervalSec() }
+        accel = AccelerometerHandler(sManager, samplingUs)
+        gps = GPSHandler(application, gpsInterval.toLong())
+        scope = CoroutineScope(Dispatchers.Default)
+        val sc = scope!!
+        collectingJob =
+                sc.launch {
+                    val userId = userPrefs.getOrCreateUserId()
+                    repository.startTrip(userId)
+                    accel?.start()
+                    launch { gps?.start() }
+                    gps?.locations?.collect { loc -> latestLocation = loc }
+                }
+        scope?.launch {
+            accel?.readings?.collect { arr ->
+                val x = arr[0]
+                val y = arr[1]
+                val z = arr[2]
+                val m = arr[3]
+                val loc = latestLocation
+                val lat = loc?.latitude
+                val lon = loc?.longitude
+                val alt = loc?.altitude
+                val spd = loc?.speed
+                val acc = loc?.accuracy
+                val brg = loc?.bearing
+                val reading =
+                        SensorReading(
+                                timestamp = System.currentTimeMillis(),
+                                accelX = x,
+                                accelY = y,
+                                accelZ = z,
+                                magnitude = m,
+                                latitude = lat,
+                                longitude = lon,
+                                altitude = alt,
+                                speed = spd,
+                                accuracy = acc,
+                                bearing = brg
+                        )
+                repository.appendReading(reading)
+            }
+        }
+    }
+
+    private fun stopRecording() {
+        accel?.stop()
+        gps?.stop()
+        collectingJob?.cancel()
+        scope?.cancel()
+        scope = null
+        launchFinish()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun launchFinish() {
+        CoroutineScope(Dispatchers.Default).launch { repository.finishTrip() }
+    }
+
+    private fun createChannel() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val ch =
+                    NotificationChannel(CHANNEL_ID, "Recording", NotificationManager.IMPORTANCE_LOW)
+            nm.createNotificationChannel(ch)
+        }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Road Damage Detector")
+                .setContentText(text)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setOngoing(true)
+                .build()
+    }
+
+    companion object {
+        const val CHANNEL_ID = "rdd_recording"
+        const val NOTIF_ID = 1001
+        const val ACTION_START = "com.pemalang.roaddamage.START"
+        const val ACTION_STOP = "com.pemalang.roaddamage.STOP"
+    }
+}
