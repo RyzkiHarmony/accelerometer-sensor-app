@@ -1,6 +1,10 @@
 package com.pemalang.roaddamage.ui.screens
 
 import android.app.Application
+import android.content.ContentValues
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.BackoffPolicy
@@ -13,35 +17,40 @@ import com.pemalang.roaddamage.data.local.TripDao
 import com.pemalang.roaddamage.model.Trip
 import com.pemalang.roaddamage.model.UploadStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.BufferedReader
+import java.io.File
+import java.io.FileReader
+import java.io.FileWriter
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.File
-import java.io.FileReader
-import java.util.concurrent.TimeUnit
 
 @HiltViewModel
-class TripDetailViewModel @Inject constructor(
-    private val app: Application,
-    private val tripDao: TripDao
-) : ViewModel() {
+class TripDetailViewModel
+@Inject
+constructor(private val app: Application, private val tripDao: TripDao) : ViewModel() {
     data class UiState(
-        val trip: Trip? = null,
-        val points: List<Pair<Double, Double>> = emptyList(),
-        val magnitudes: List<Float> = emptyList()
+            val trip: Trip? = null,
+            val points: List<Pair<Double, Double>> = emptyList(),
+            val magnitudes: List<Float> = emptyList()
     )
     sealed class Event {
         object Deleted : Event()
         data class Error(val message: String) : Event()
+        data class Saved(val path: String) : Event()
     }
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
     val events =
-        MutableSharedFlow<Event>(replay = 0, extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+            MutableSharedFlow<Event>(
+                    replay = 0,
+                    extraBufferCapacity = 8,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
 
     suspend fun load(tripId: String) {
         val trip = tripDao.getById(tripId)
@@ -79,19 +88,27 @@ class TripDetailViewModel @Inject constructor(
 
     fun enqueueUpload() {
         val trip = _ui.value.trip ?: return
-        if (trip.uploadStatus == UploadStatus.UPLOADED || trip.uploadStatus == UploadStatus.UPLOADING) return
+        if (trip.uploadStatus == UploadStatus.UPLOADED ||
+                        trip.uploadStatus == UploadStatus.UPLOADING
+        )
+                return
         viewModelScope.launch { tripDao.upsert(trip.copy(uploadStatus = UploadStatus.UPLOADING)) }
         val input = Data.Builder().putString("tripId", trip.tripId).build()
-        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val constraints =
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val request =
-            OneTimeWorkRequestBuilder<com.pemalang.roaddamage.work.TripUploadWorker>()
-                .setInputData(input)
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
-                .addTag("upload_trip_${trip.tripId}")
-                .build()
+                OneTimeWorkRequestBuilder<com.pemalang.roaddamage.work.TripUploadWorker>()
+                        .setInputData(input)
+                        .setConstraints(constraints)
+                        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                        .addTag("upload_trip_${trip.tripId}")
+                        .build()
         WorkManager.getInstance(app)
-            .enqueueUniqueWork("upload_trip_${trip.tripId}", androidx.work.ExistingWorkPolicy.KEEP, request)
+                .enqueueUniqueWork(
+                        "upload_trip_${trip.tripId}",
+                        androidx.work.ExistingWorkPolicy.KEEP,
+                        request
+                )
     }
 
     fun deleteTrip() {
@@ -108,5 +125,81 @@ class TripDetailViewModel @Inject constructor(
             }
         }
     }
-}
 
+    fun saveToDownloads() {
+        val trip = _ui.value.trip ?: return
+        viewModelScope.launch {
+            if (Build.VERSION.SDK_INT >= 29) {
+                try {
+                    val csvSrc = File(trip.dataFilePath)
+                    val dateFormat =
+                            java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd_HH-mm-ss",
+                                    java.util.Locale.getDefault()
+                            )
+                    val dateStr = dateFormat.format(java.util.Date(trip.startTime))
+                    val csvName = "RoadDamage_$dateStr.csv"
+                    val jsonName = "RoadDamage_$dateStr.json"
+
+                    val csvUri = insertDownloads(csvName, "text/csv")
+                    if (csvUri != null) {
+                        app.contentResolver.openOutputStream(csvUri)?.use { out ->
+                            csvSrc.inputStream().use { inp -> inp.copyTo(out) }
+                        }
+                    }
+
+                    val metaJson =
+                            """{"tripId":"${trip.tripId}","userId":"${trip.userId}","startTime":${trip.startTime},"startTimeReadable":"$dateStr","endTime":${trip.endTime},"duration":${trip.duration},"distance":${trip.distance}}"""
+                    val jsonUri = insertDownloads(jsonName, "application/json")
+                    if (jsonUri != null) {
+                        app.contentResolver.openOutputStream(jsonUri)?.use { out ->
+                            out.write(metaJson.toByteArray())
+                        }
+                    }
+
+                    events.tryEmit(Event.Saved("Tersimpan di Download/RoadDamageDetector"))
+                } catch (t: Throwable) {
+                    events.tryEmit(Event.Error("Gagal menyimpan ke Downloads: ${t.message ?: ""}"))
+                }
+            } else {
+                saveLocal(trip)
+            }
+        }
+    }
+
+    private fun saveLocal(trip: Trip) {
+        try {
+            val src = File(trip.dataFilePath)
+            val exportDir = File(app.getExternalFilesDir(null), "exports")
+            if (!exportDir.exists()) exportDir.mkdirs()
+
+            val destCsv = File(exportDir, src.name)
+            src.copyTo(destCsv, overwrite = true)
+
+            val meta = File(exportDir, "${trip.tripId}.json")
+            val metaJson =
+                    """{"tripId":"${trip.tripId}","userId":"${trip.userId}","startTime":${trip.startTime},"endTime":${trip.endTime},"duration":${trip.duration},"distance":${trip.distance},"csv":"${destCsv.absolutePath}"}"""
+            FileWriter(meta, false).use { it.write(metaJson) }
+
+            events.tryEmit(Event.Saved("Tersimpan di ${destCsv.parent}"))
+        } catch (t: Throwable) {
+            events.tryEmit(Event.Error("Gagal menyimpan: ${t.message ?: ""}"))
+        }
+    }
+
+    private fun insertDownloads(name: String, mime: String): Uri? {
+        val values =
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        put(MediaStore.Downloads.RELATIVE_PATH, "Download/RoadDamageDetector")
+                    }
+                }
+        return if (Build.VERSION.SDK_INT >= 29) {
+            app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        } else {
+            null
+        }
+    }
+}

@@ -1,5 +1,7 @@
 package com.pemalang.roaddamage.ui.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -27,7 +29,14 @@ object Routes {
 @Composable
 fun AppNavHost(navController: NavHostController = rememberNavController()) {
     Surface(color = MaterialTheme.colorScheme.background) {
-        NavHost(navController = navController, startDestination = Routes.Splash) {
+        NavHost(
+                navController = navController,
+                startDestination = Routes.Splash,
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None }
+        ) {
             composable(Routes.Splash) {
                 SplashScreen(
                         onFinished = {

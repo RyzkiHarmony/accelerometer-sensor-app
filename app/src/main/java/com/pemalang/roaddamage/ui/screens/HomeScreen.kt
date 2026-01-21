@@ -448,7 +448,10 @@ fun ActiveSessionScreen(
             containerColor = DarkBg,
             topBar = {
                 Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                 ) {

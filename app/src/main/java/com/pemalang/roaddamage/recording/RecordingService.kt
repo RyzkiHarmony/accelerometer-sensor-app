@@ -10,12 +10,20 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.pemalang.roaddamage.R
 import com.pemalang.roaddamage.data.prefs.UserPrefs
 import com.pemalang.roaddamage.model.SensorReading
+import com.pemalang.roaddamage.model.Trip
 import com.pemalang.roaddamage.sensors.AccelerometerHandler
 import com.pemalang.roaddamage.sensors.GPSHandler
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -113,7 +121,42 @@ class RecordingService : Service() {
     }
 
     private fun launchFinish() {
-        CoroutineScope(Dispatchers.Default).launch { repository.finishTrip() }
+        CoroutineScope(Dispatchers.Default).launch {
+            val trip = repository.finishTrip()
+            if (trip != null) {
+                checkAutoUpload(trip)
+            }
+        }
+    }
+
+    private suspend fun checkAutoUpload(trip: Trip) {
+        val auto = userPrefs.getAutoUpload()
+        if (auto) {
+            scheduleUpload(trip)
+        }
+    }
+
+    private fun scheduleUpload(trip: Trip) {
+        val input = Data.Builder().putString("tripId", trip.tripId).build()
+
+        // WiFi Only constraint for Auto Upload
+        val constraints =
+                Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
+
+        val request =
+                OneTimeWorkRequestBuilder<com.pemalang.roaddamage.work.TripUploadWorker>()
+                        .setInputData(input)
+                        .setConstraints(constraints)
+                        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                        .addTag("upload_trip_${trip.tripId}")
+                        .build()
+
+        WorkManager.getInstance(applicationContext)
+                .enqueueUniqueWork(
+                        "upload_trip_${trip.tripId}",
+                        androidx.work.ExistingWorkPolicy.KEEP,
+                        request
+                )
     }
 
     private fun createChannel() {

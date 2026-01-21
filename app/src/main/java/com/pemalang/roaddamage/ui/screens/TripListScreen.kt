@@ -38,6 +38,14 @@ private val StatusGreen = Color(0xFF00E676)
 private val StatusOrange = Color(0xFFFFAB40)
 private val DeleteRed = Color(0xFFEF5350)
 
+enum class SortOption {
+    NEWEST,
+    OLDEST,
+    DISTANCE_DESC,
+    DURATION_DESC
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripListScreen(
         onOpenTrip: (Trip) -> Unit,
@@ -50,13 +58,22 @@ fun TripListScreen(
     val ctx = LocalContext.current
 
     var filter by remember { mutableStateOf("All") } // All, Uploaded, Pending
+    var sortOption by remember { mutableStateOf(SortOption.NEWEST) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     val filteredTrips =
-            remember(trips, filter) {
-                when (filter) {
-                    "Uploaded" -> trips.filter { it.uploadStatus == UploadStatus.UPLOADED }
-                    "Pending" -> trips.filter { it.uploadStatus != UploadStatus.UPLOADED }
-                    else -> trips
+            remember(trips, filter, sortOption) {
+                val list =
+                        when (filter) {
+                            "Uploaded" -> trips.filter { it.uploadStatus == UploadStatus.UPLOADED }
+                            "Pending" -> trips.filter { it.uploadStatus != UploadStatus.UPLOADED }
+                            else -> trips
+                        }
+                when (sortOption) {
+                    SortOption.NEWEST -> list.sortedByDescending { it.startTime }
+                    SortOption.OLDEST -> list.sortedBy { it.startTime }
+                    SortOption.DISTANCE_DESC -> list.sortedByDescending { it.distance }
+                    SortOption.DURATION_DESC -> list.sortedByDescending { it.duration }
                 }
             }
 
@@ -64,7 +81,7 @@ fun TripListScreen(
         vm.events.collect { e ->
             when (e) {
                 is SaveEvent.Success -> {
-                    val msg = if (e.uri != null) "Tersimpan di Downloads" else "Tersimpan di Lokal"
+                    val msg = if (e.uri != null) "Tersimpan di Unduhan" else "Tersimpan di Lokal"
                     val res = host.showSnackbar(message = msg, actionLabel = "Buka")
                     if (res == SnackbarResult.ActionPerformed) {
                         if (e.uri != null) openCsv(ctx, e.uri)
@@ -130,13 +147,13 @@ fun TripListScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
             Text(
-                    text = "DATA LOGS",
+                    text = "LOG DATA",
                     color = AccentCyan,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
             )
             Text(
-                    text = "Trip History",
+                    text = "Riwayat Perjalanan",
                     color = TextPrimary,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
@@ -144,14 +161,57 @@ fun TripListScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Filters
+            // Filters & Sort
             Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
             ) {
-                FilterButton("All Trips", filter == "All") { filter = "All" }
-                FilterButton("Uploaded", filter == "Uploaded") { filter = "Uploaded" }
-                FilterButton("Pending", filter == "Pending") { filter = "Pending" }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterButton("Semua", filter == "All") { filter = "All" }
+                    FilterButton("Terunggah", filter == "Uploaded") { filter = "Uploaded" }
+                    FilterButton("Tertunda", filter == "Pending") { filter = "Pending" }
+                }
+
+                Box {
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.Default.Sort, contentDescription = "Urutkan", tint = AccentCyan)
+                    }
+                    DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false },
+                            containerColor = CardBg
+                    ) {
+                        DropdownMenuItem(
+                                text = { Text("Terbaru", color = TextPrimary) },
+                                onClick = {
+                                    sortOption = SortOption.NEWEST
+                                    showSortMenu = false
+                                }
+                        )
+                        DropdownMenuItem(
+                                text = { Text("Terlama", color = TextPrimary) },
+                                onClick = {
+                                    sortOption = SortOption.OLDEST
+                                    showSortMenu = false
+                                }
+                        )
+                        DropdownMenuItem(
+                                text = { Text("Jarak Terjauh", color = TextPrimary) },
+                                onClick = {
+                                    sortOption = SortOption.DISTANCE_DESC
+                                    showSortMenu = false
+                                }
+                        )
+                        DropdownMenuItem(
+                                text = { Text("Durasi Terlama", color = TextPrimary) },
+                                onClick = {
+                                    sortOption = SortOption.DURATION_DESC
+                                    showSortMenu = false
+                                }
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -160,11 +220,43 @@ fun TripListScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filteredTrips) { trip ->
-                    TripCard(
-                            trip = trip,
-                            onClick = { onOpenTrip(trip) },
-                            onDelete = { vm.deleteTrip(trip) }
+                items(filteredTrips, key = { it.tripId }) { trip ->
+                    val dismissState =
+                            rememberSwipeToDismissBoxState(
+                                    confirmValueChange = {
+                                        if (it == SwipeToDismissBoxValue.EndToStart) {
+                                            vm.deleteTrip(trip)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                            )
+
+                    SwipeToDismissBox(
+                            state = dismissState,
+                            backgroundContent = {
+                                val color = DeleteRed
+                                Box(
+                                        modifier =
+                                                Modifier.fillMaxSize()
+                                                        .background(
+                                                                color,
+                                                                RoundedCornerShape(16.dp)
+                                                        )
+                                                        .padding(horizontal = 20.dp),
+                                        contentAlignment = Alignment.CenterEnd
+                                ) {
+                                    Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = Color.White
+                                    )
+                                }
+                            },
+                            content = { TripCard(trip = trip, onClick = { onOpenTrip(trip) }) },
+                            enableDismissFromStartToEnd = false,
+                            enableDismissFromEndToStart = true
                     )
                 }
             }
@@ -188,10 +280,10 @@ fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun TripCard(trip: Trip, onClick: () -> Unit, onDelete: () -> Unit) {
+fun TripCard(trip: Trip, onClick: () -> Unit) {
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-    val dayFormat = SimpleDateFormat("EEE", Locale.getDefault()) // TUE, WED
+    val dayFormat = SimpleDateFormat("EEE", Locale.getDefault())
 
     val dateStr = dateFormat.format(Date(trip.startTime))
     val timeStr = timeFormat.format(Date(trip.startTime))
@@ -204,157 +296,128 @@ fun TripCard(trip: Trip, onClick: () -> Unit, onDelete: () -> Unit) {
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth().clickable { onClick() }
     ) {
-        Row(modifier = Modifier.fillMaxSize().height(IntrinsicSize.Min)) {
-            Column(modifier = Modifier.weight(1f).padding(16.dp)) {
-                // Header: Date & Status
-                Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                                modifier =
-                                        Modifier.size(40.dp)
-                                                .background(
-                                                        Color(0xFF2C3E50),
-                                                        RoundedCornerShape(8.dp)
-                                                ),
-                                contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                    Icons.Default.DateRange,
-                                    null,
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                    text = dateStr,
-                                    color = TextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                    text = "$timeStr • $dayStr",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    // Status Badge
-                    Surface(
-                            color =
-                                    (if (isUploaded) StatusGreen else StatusOrange).copy(
-                                            alpha = 0.1f
-                                    ),
-                            shape = RoundedCornerShape(12.dp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header: Date & Status
+            Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                            modifier =
+                                    Modifier.size(40.dp)
+                                            .background(
+                                                    Color(0xFF2C3E50),
+                                                    RoundedCornerShape(8.dp)
+                                            ),
+                            contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                    modifier =
-                                            Modifier.size(6.dp)
-                                                    .background(
-                                                            if (isUploaded) StatusGreen
-                                                            else StatusOrange,
-                                                            CircleShape
-                                                    )
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                    text = if (isUploaded) "UPLOADED" else "PENDING",
-                                    color = if (isUploaded) StatusGreen else StatusOrange,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Icon(
+                                Icons.Default.DateRange,
+                                null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                                text = dateStr,
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                        )
+                        Text(text = "$timeStr • $dayStr", color = TextSecondary, fontSize = 12.sp)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = Color(0xFF2C3E50), thickness = 1.dp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Stats
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "DISTANCE", color = TextSecondary, fontSize = 10.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                    text = "%.1f".format(trip.distance / 1000f),
-                                    color = TextPrimary,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                    " km",
-                                    color = AccentCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "DURATION", color = TextSecondary, fontSize = 10.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val m = (trip.duration / 60).toInt()
-                        val s = (trip.duration % 60).toInt()
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                    text = "$m",
-                                    color = TextPrimary,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                    " m ",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                            Text(
-                                    text = "$s",
-                                    color = TextPrimary,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                    " s",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                        }
+                // Status Badge
+                Surface(
+                        color = (if (isUploaded) StatusGreen else StatusOrange).copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                                modifier =
+                                        Modifier.size(6.dp)
+                                                .background(
+                                                        if (isUploaded) StatusGreen
+                                                        else StatusOrange,
+                                                        CircleShape
+                                                )
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                                text = if (isUploaded) "UPLOADED" else "PENDING",
+                                color = if (isUploaded) StatusGreen else StatusOrange,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
 
-            // Side Action (Delete)
-            Column(
-                    modifier =
-                            Modifier.width(48.dp)
-                                    .fillMaxHeight() // This might not work well in Row height
-                                    // intrinsic
-                                    .background(Color(0xFF2C2F3A))
-                                    .clickable { onDelete() }
-                                    .padding(vertical = 16.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                        Icons.Default.Delete,
-                        "Delete",
-                        tint = DeleteRed,
-                        modifier = Modifier.size(20.dp)
-                )
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color(0xFF2C3E50), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Stats
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "DISTANCE", color = TextSecondary, fontSize = 10.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                                text = "%.1f".format(trip.distance / 1000f),
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                                " km",
+                                color = AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "DURATION", color = TextSecondary, fontSize = 10.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val m = (trip.duration / 60).toInt()
+                    val s = (trip.duration % 60).toInt()
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                                text = "$m",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                                " m ",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                        Text(
+                                text = "$s",
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                                " s",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
             }
         }
     }

@@ -110,8 +110,15 @@ constructor(
             if (Build.VERSION.SDK_INT >= 29) {
                 try {
                     val csvSrc = File(trip.dataFilePath)
-                    val csvName = "${trip.tripId}.csv"
-                    val jsonName = "${trip.tripId}.json"
+                    val dateFormat =
+                            java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd_HH-mm-ss",
+                                    java.util.Locale.getDefault()
+                            )
+                    val dateStr = dateFormat.format(java.util.Date(trip.startTime))
+                    val csvName = "RoadDamage_${dateStr}_${trip.tripId}.csv"
+                    val jsonName = "RoadDamage_${dateStr}_${trip.tripId}.json"
+
                     val csvUri = insertDownloads(csvName, "text/csv")
                     if (csvUri != null) {
                         app.contentResolver.openOutputStream(csvUri)?.use { out ->
@@ -119,7 +126,7 @@ constructor(
                         }
                     }
                     val metaJson =
-                            """{"tripId":"${trip.tripId}","userId":"${trip.userId}","startTime":${trip.startTime},"endTime":${trip.endTime},"duration":${trip.duration},"distance":${trip.distance}}"""
+                            """{"tripId":"${trip.tripId}","userId":"${trip.userId}","startTime":${trip.startTime},"startTimeReadable":"$dateStr","endTime":${trip.endTime},"duration":${trip.duration},"distance":${trip.distance}}"""
                     val jsonUri = insertDownloads(jsonName, "application/json")
                     if (jsonUri != null) {
                         app.contentResolver.openOutputStream(jsonUri)?.use { out ->

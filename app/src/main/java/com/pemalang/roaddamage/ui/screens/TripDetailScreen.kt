@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -59,6 +60,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
             when (e) {
                 is TripDetailViewModel.Event.Deleted -> onBack()
                 is TripDetailViewModel.Event.Error -> host.showSnackbar(e.message)
+                is TripDetailViewModel.Event.Saved -> host.showSnackbar(e.path)
             }
         }
     }
@@ -75,11 +77,14 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                         } else ""
 
                 Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = TextPrimary)
+                        Icon(Icons.Filled.ArrowBack, "Back", tint = TextPrimary)
                     }
                     Column(
                             modifier = Modifier.weight(1f),
@@ -93,8 +98,13 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                         )
                         Text(text = dateStr, color = TextSecondary, fontSize = 12.sp)
                     }
-                    IconButton(onClick = { /* Share */}) {
-                        Icon(Icons.Default.Share, "Share", tint = TextPrimary)
+                    Row {
+                        IconButton(onClick = { /* TODO: Implement Share */}) {
+                            Icon(Icons.Default.Share, "Share", tint = TextPrimary)
+                        }
+                        IconButton(onClick = { vm.saveToDownloads() }) {
+                            Icon(Icons.Default.Download, "Download", tint = TextPrimary)
+                        }
                     }
                 }
             }
@@ -117,7 +127,6 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                     ) {
                         DetailStatCard("DISTANCE", "%.1f".format(trip.distance / 1000f), "KM")
                         DetailStatCard("DURATION", "${trip.duration / 60}m", "TIME")
-                        DetailStatCard("EVENTS", "12", "EVENTS", true) // Placeholder events count
                     }
                 }
 
@@ -135,7 +144,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                            Icons.Default.BarChart,
+                                            Icons.Filled.BarChart,
                                             null,
                                             tint = AccentCyan,
                                             modifier = Modifier.size(20.dp)
@@ -146,14 +155,6 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                             color = TextPrimary,
                                             fontWeight = FontWeight.Bold
                                     )
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Peak Spike", color = TextSecondary, fontSize = 10.sp)
-                                    Text(
-                                            "2.4G",
-                                            color = SpikeRed,
-                                            fontWeight = FontWeight.Bold
-                                    ) // Placeholder
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -218,13 +219,13 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                        if (isUploaded) "Upload Complete" else "Pending Upload",
+                                        if (isUploaded) "Unggah Selesai" else "Menunggu Unggah",
                                         color = TextPrimary,
                                         fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                        if (isUploaded) "Data synced with server"
-                                        else "Data stored locally",
+                                        if (isUploaded) "Data tersinkronisasi dengan server"
+                                        else "Data tersimpan secara lokal",
                                         color = TextSecondary,
                                         fontSize = 10.sp
                                 )
@@ -242,7 +243,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                         modifier = Modifier.height(32.dp)
                                 ) {
                                     Text(
-                                            "Upload Now",
+                                            "Unggah Sekarang",
                                             color = Color.Black,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
@@ -261,7 +262,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                             ) {
                                 Icon(
                                         Icons.Default.Delete,
-                                        "Delete",
+                                        "Hapus",
                                         tint = TextSecondary,
                                         modifier = Modifier.size(16.dp)
                                 )
@@ -338,11 +339,70 @@ private fun MapSection(ctx: Context, points: List<Pair<Double, Double>>) {
     }
     val mapView = remember {
         MapView(ctx).apply {
-            setTileSource(
-                    TileSourceFactory.MAPNIK
-            ) // Dark mode map would be better but standard for now
+            setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             isTilesScaledToDpi = true
+
+            // Dark Mode Filter
+            val inverseMatrix =
+                    android.graphics.ColorMatrix(
+                            floatArrayOf(
+                                    -1.0f,
+                                    0.0f,
+                                    0.0f,
+                                    0.0f,
+                                    255f,
+                                    0.0f,
+                                    -1.0f,
+                                    0.0f,
+                                    0.0f,
+                                    255f,
+                                    0.0f,
+                                    0.0f,
+                                    -1.0f,
+                                    0.0f,
+                                    255f,
+                                    0.0f,
+                                    0.0f,
+                                    0.0f,
+                                    1.0f,
+                                    0.0f
+                            )
+                    )
+            val destinationColor = android.graphics.Color.parseColor("#FF2A2A2A")
+            val lr = (255.0f - android.graphics.Color.red(destinationColor)) / 255.0f
+            val lg = (255.0f - android.graphics.Color.green(destinationColor)) / 255.0f
+            val lb = (255.0f - android.graphics.Color.blue(destinationColor)) / 255.0f
+            val grayscaleMatrix =
+                    android.graphics.ColorMatrix(
+                            floatArrayOf(
+                                    lr,
+                                    lg,
+                                    lb,
+                                    0f,
+                                    0f,
+                                    lr,
+                                    lg,
+                                    lb,
+                                    0f,
+                                    0f,
+                                    lr,
+                                    lg,
+                                    lb,
+                                    0f,
+                                    0f,
+                                    0f,
+                                    0f,
+                                    0f,
+                                    1f,
+                                    0f,
+                            )
+                    )
+
+            // Apply simple dark filter (invert + high contrast) or just invert
+            // Using a simple invert for "Dark Mode" effect on standard tiles
+            val filter = android.graphics.ColorMatrixColorFilter(inverseMatrix)
+            this.overlayManager.tilesOverlay.setColorFilter(filter)
         }
     }
     androidx.compose.ui.viewinterop.AndroidView(
@@ -399,31 +459,32 @@ private fun MagnitudeGraph(magnitudes: List<Float>, modifier: Modifier = Modifie
         val rowH = h / rows
         val colW = w / cols
 
-        val gridPaint = Paint().apply {
-            color = android.graphics.Color.parseColor("#33FFFFFF")
-            strokeWidth = 2f
-            style = Paint.Style.STROKE
-        }
+        val gridPaint =
+                Paint().apply {
+                    color = android.graphics.Color.parseColor("#33FFFFFF")
+                    strokeWidth = 2f
+                    style = Paint.Style.STROKE
+                }
 
         // Horizontal grid
         for (i in 0..rows) {
             val y = i * rowH
             drawLine(
-                start = Offset(0f, y),
-                end = Offset(w, y),
-                color = Color(0x33FFFFFF),
-                strokeWidth = 1f
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(w, y),
+                    color = Color(0x33FFFFFF),
+                    strokeWidth = 1f
             )
         }
-        
+
         // Vertical grid
         for (i in 0..cols) {
             val x = i * colW
             drawLine(
-                start = Offset(x, 0f),
-                end = Offset(x, h),
-                color = Color(0x33FFFFFF),
-                strokeWidth = 1f
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, h),
+                    color = Color(0x33FFFFFF),
+                    strokeWidth = 1f
             )
         }
 
@@ -433,57 +494,15 @@ private fun MagnitudeGraph(magnitudes: List<Float>, modifier: Modifier = Modifie
         val path = Path()
         val maxVal = 20f // Asumsi max G sekitar 2-3G, tapi magnitude bisa spike. Kita clamp visual.
         val stepX = w / (magnitudes.size - 1).coerceAtLeast(1)
-        
+
         magnitudes.forEachIndexed { i, mag ->
             val x = i * stepX
             // Normalize mag (0..maxVal) to (h..0) - invert Y
             val y = h - ((mag.coerceIn(0f, maxVal) / maxVal) * h)
-            
-            if (i == 0) path.moveTo(x, y)
-            else path.lineTo(x, y)
-        }
 
-        drawPath(
-            path = path,
-            color = GraphLine,
-            style = Stroke(width = 3f)
-        )
-    }
-}
-
-            val y = i * (h / rows)
-            drawLine(
-                    color = Color(0xFF2C3E50),
-                    start = androidx.compose.ui.geometry.Offset(0f, y),
-                    end = androidx.compose.ui.geometry.Offset(w, y),
-                    strokeWidth = 1f
-            )
-        }
-
-        // Vertical grid
-        for (i in 0..cols) {
-            val x = i * (w / cols)
-            drawLine(
-                    color = Color(0xFF2C3E50),
-                    start = androidx.compose.ui.geometry.Offset(x, 0f),
-                    end = androidx.compose.ui.geometry.Offset(x, h),
-                    strokeWidth = 1f
-            )
-        }
-
-        if (magnitudes.isEmpty()) return@Canvas
-
-        val maxMag =
-                (magnitudes.maxOrNull() ?: 12f).coerceAtLeast(12f) // Assume 12 is reasonable max g
-        val path = Path()
-        val stepX = w / (magnitudes.size - 1).coerceAtLeast(1)
-
-        magnitudes.forEachIndexed { i, v ->
-            val x = i * stepX
-            val y = h - (v / maxMag) * h
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
 
-        drawPath(path = path, color = GraphLine, style = Stroke(width = 3.dp.toPx()))
+        drawPath(path = path, color = GraphLine, style = Stroke(width = 3f))
     }
 }

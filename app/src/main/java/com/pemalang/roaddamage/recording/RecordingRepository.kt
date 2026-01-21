@@ -6,31 +6,40 @@ import com.pemalang.roaddamage.model.SensorReading
 import com.pemalang.roaddamage.model.Trip
 import com.pemalang.roaddamage.model.UploadStatus
 import com.pemalang.roaddamage.util.Distance
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.withContext
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 @Singleton
-class RecordingRepository @Inject constructor(
-    private val app: Application,
-    private val tripDao: TripDao
-) {
+class RecordingRepository
+@Inject
+constructor(private val app: Application, private val tripDao: TripDao) {
     private var currentTrip: Trip? = null
     private var writer: BufferedWriter? = null
     private var lastLat: Double? = null
     private var lastLon: Double? = null
     private var totalDistance: Float = 0f
-    private val _readings = MutableSharedFlow<SensorReading>(replay = 0, extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    private val _points = MutableSharedFlow<Pair<Double, Double>>(replay = 0, extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _readings =
+            MutableSharedFlow<SensorReading>(
+                    replay = 0,
+                    extraBufferCapacity = 256,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
+    private val _points =
+            MutableSharedFlow<Pair<Double, Double>>(
+                    replay = 0,
+                    extraBufferCapacity = 256,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
     private val _distance = MutableStateFlow(0f)
     private val _recording = MutableStateFlow(false)
     private val _startTime = MutableStateFlow(0L)
@@ -48,17 +57,18 @@ class RecordingRepository @Inject constructor(
         val tripId = UUID.randomUUID().toString()
         val file = File(app.getExternalFilesDir(null), "$tripId.csv")
         val now = System.currentTimeMillis()
-        val trip = Trip(
-            tripId = tripId,
-            userId = userId,
-            startTime = now,
-            endTime = 0,
-            duration = 0,
-            distance = 0f,
-            dataFilePath = file.absolutePath,
-            uploadStatus = UploadStatus.PENDING,
-            createdAt = now
-        )
+        val trip =
+                Trip(
+                        tripId = tripId,
+                        userId = userId,
+                        startTime = now,
+                        endTime = 0,
+                        duration = 0,
+                        distance = 0f,
+                        dataFilePath = file.absolutePath,
+                        uploadStatus = UploadStatus.PENDING,
+                        createdAt = now
+                )
         withContext(Dispatchers.IO) {
             writer = BufferedWriter(FileWriter(file, true))
             writer?.write("timestamp,ax,ay,az,magnitude,lat,lon,alt,speed,accuracy,bearing\n")
@@ -79,9 +89,9 @@ class RecordingRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             writer?.apply {
                 write(
-                    "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
-                            "${reading.latitude ?: ""},${reading.longitude ?: ""},${reading.altitude ?: ""}," +
-                            "${reading.speed ?: ""},${reading.accuracy ?: ""},${reading.bearing ?: ""}\n"
+                        "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
+                                "${reading.latitude ?: ""},${reading.longitude ?: ""},${reading.altitude ?: ""}," +
+                                "${reading.speed ?: ""},${reading.accuracy ?: ""},${reading.bearing ?: ""}\n"
                 )
             }
         }
@@ -103,18 +113,19 @@ class RecordingRepository @Inject constructor(
         }
     }
 
-    suspend fun finishTrip() {
+    suspend fun finishTrip(): Trip? {
         withContext(Dispatchers.IO) {
             writer?.flush()
             writer?.close()
             writer = null
         }
         val now = System.currentTimeMillis()
-        val trip = currentTrip ?: return
+        val trip = currentTrip ?: return null
         val duration = ((now - trip.startTime) / 1000)
         val updated = trip.copy(endTime = now, duration = duration, distance = totalDistance)
         tripDao.upsert(updated)
         currentTrip = null
         _recording.value = false
+        return updated
     }
 }

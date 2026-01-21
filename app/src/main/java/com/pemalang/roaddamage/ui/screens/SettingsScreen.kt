@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,11 +34,7 @@ private val DeleteRed = Color(0xFFEF5350)
 private val StatusGreen = Color(0xFF00E676)
 
 @Composable
-fun SettingsScreen(
-    onBack: () -> Unit,
-    onNavigateHome: () -> Unit,
-    onNavigateTrips: () -> Unit
-) {
+fun SettingsScreen(onBack: () -> Unit, onNavigateHome: () -> Unit, onNavigateTrips: () -> Unit) {
     val vm: SettingsViewModel = hiltViewModel()
     val ui by vm.ui.collectAsState()
     val host = remember { SnackbarHostState() }
@@ -52,137 +49,135 @@ fun SettingsScreen(
 
     if (showEditProfile) {
         EditProfileDialog(
-            currentName = ui.userName,
-            currentEmail = ui.userEmail,
-            currentVehicle = ui.vehicleType,
-            onDismiss = { showEditProfile = false },
-            onSave = { name, email, vehicle ->
-                vm.setUserName(name)
-                vm.setUserEmail(email)
-                vm.setVehicleType(vehicle)
-                showEditProfile = false
-            }
+                currentName = ui.userName,
+                currentEmail = ui.userEmail,
+                currentVehicle = ui.vehicleType,
+                onDismiss = { showEditProfile = false },
+                onSave = { name, email, vehicle ->
+                    vm.setUserName(name)
+                    vm.setUserEmail(email)
+                    vm.setVehicleType(vehicle)
+                    showEditProfile = false
+                }
         )
     }
 
     Scaffold(
-        containerColor = DarkBg,
-        snackbarHost = { SnackbarHost(hostState = host) },
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
+            containerColor = DarkBg,
+            snackbarHost = { SnackbarHost(hostState = host) },
+            topBar = {
+                Row(
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                            text = "KONFIGURASI",
+                            color = TextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.width(48.dp)) // Balance the back button
+                }
+            },
+            bottomBar = {
+                NavigationBar(containerColor = DarkBg, contentColor = AccentCyan) {
+                    NavigationBarItem(
+                            selected = false,
+                            onClick = onNavigateHome,
+                            icon = { Icon(Icons.Default.Home, "Home") },
+                            label = { Text("Home") },
+                            colors =
+                                    NavigationBarItemDefaults.colors(
+                                            selectedIconColor = AccentCyan,
+                                            selectedTextColor = AccentCyan,
+                                            unselectedIconColor = TextSecondary,
+                                            unselectedTextColor = TextSecondary,
+                                            indicatorColor = CardBg
+                                    )
+                    )
+                    // Map item omitted as per current app structure
+                    NavigationBarItem(
+                            selected = false,
+                            onClick = onNavigateTrips,
+                            icon = { Icon(Icons.Default.History, "History") },
+                            label = { Text("History") },
+                            colors =
+                                    NavigationBarItemDefaults.colors(
+                                            selectedIconColor = AccentCyan,
+                                            selectedTextColor = AccentCyan,
+                                            unselectedIconColor = TextSecondary,
+                                            unselectedTextColor = TextSecondary,
+                                            indicatorColor = CardBg
+                                    )
+                    )
+                    NavigationBarItem(
+                            selected = true,
+                            onClick = {},
+                            icon = { Icon(Icons.Default.Settings, "Settings") },
+                            label = { Text("Settings") },
+                            colors =
+                                    NavigationBarItemDefaults.colors(
+                                            selectedIconColor = AccentCyan,
+                                            selectedTextColor = AccentCyan,
+                                            unselectedIconColor = TextSecondary,
+                                            unselectedTextColor = TextSecondary,
+                                            indicatorColor = CardBg
+                                    )
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "CONFIGURATION",
-                    color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Spacer(modifier = Modifier.width(48.dp)) // Balance the back button
             }
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = DarkBg,
-                contentColor = AccentCyan
-            ) {
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateHome,
-                    icon = { Icon(Icons.Default.Home, "Dash") },
-                    label = { Text("Dash") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary,
-                        indicatorColor = CardBg
-                    )
-                )
-                // Map item omitted as per current app structure
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateTrips,
-                    icon = { Icon(Icons.Default.Folder, "Data") },
-                    label = { Text("Data") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary,
-                        indicatorColor = CardBg
-                    )
-                )
-                NavigationBarItem(
-                    selected = true,
-                    onClick = { },
-                    icon = { Icon(Icons.Default.Settings, "Settings") },
-                    label = { Text("Settings") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary,
-                        indicatorColor = CardBg
-                    )
-                )
-            }
-        }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                modifier =
+                        Modifier.fillMaxSize()
+                                .padding(padding)
+                                .verticalScroll(scrollState)
+                                .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // User Profile Card
             UserProfileCard(
-                name = ui.userName.ifEmpty { "User" },
-                id = ui.userId.take(8).uppercase(), // Shorten ID for display
-                role = ui.vehicleType.ifEmpty { "Unknown Vehicle" },
-                onClick = { showEditProfile = true }
+                    name = ui.userName.ifEmpty { "User" },
+                    id = ui.userId.take(8).uppercase(), // Shorten ID for display
+                    role = ui.vehicleType.ifEmpty { "Unknown Vehicle" },
+                    onClick = { showEditProfile = true }
             )
 
             // Sensor Parameters Section
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SectionHeader("SENSOR PARAMETERS", Icons.Default.Sensors)
-                
+
                 // Accelerometer Rate
                 ParameterCard(
-                    title = "Accelerometer Rate",
-                    subtitle = "Sampling frequency in Hz",
-                    value = "${sliderHz.toInt()} Hz"
+                        title = "Accelerometer Rate",
+                        subtitle = "Sampling frequency in Hz",
+                        value = "${sliderHz.toInt()} Hz"
                 ) {
                     Slider(
-                        value = sliderHz,
-                        onValueChange = { sliderHz = it },
-                        onValueChangeFinished = { vm.setSampling(sliderHz.toInt()) },
-                        valueRange = 10f..100f,
-                        steps = 8, // (100-10)/10 - 1 = 8 steps for 10Hz increments roughly
-                        colors = SliderDefaults.colors(
-                            thumbColor = AccentCyan,
-                            activeTrackColor = AccentCyan,
-                            inactiveTrackColor = CardBg
-                        )
+                            value = sliderHz,
+                            onValueChange = { sliderHz = it },
+                            onValueChangeFinished = { vm.setSampling(sliderHz.toInt()) },
+                            valueRange = 10f..100f,
+                            steps = 8, // (100-10)/10 - 1 = 8 steps for 10Hz increments roughly
+                            colors =
+                                    SliderDefaults.colors(
+                                            thumbColor = AccentCyan,
+                                            activeTrackColor = AccentCyan,
+                                            inactiveTrackColor = CardBg
+                                    )
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("10", color = TextSecondary, fontSize = 10.sp)
                         Text("50", color = TextSecondary, fontSize = 10.sp)
@@ -192,24 +187,25 @@ fun SettingsScreen(
 
                 // GPS Interval
                 ParameterCard(
-                    title = "GPS Interval",
-                    subtitle = "Location update frequency",
-                    value = "${sliderGps.toInt()} s"
+                        title = "Interval GPS",
+                        subtitle = "Frekuensi pembaruan lokasi",
+                        value = "${sliderGps.toInt()} s"
                 ) {
                     Slider(
-                        value = sliderGps,
-                        onValueChange = { sliderGps = it },
-                        onValueChangeFinished = { vm.setGpsInterval(sliderGps.toInt()) },
-                        valueRange = 1f..60f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = AccentCyan,
-                            activeTrackColor = AccentCyan,
-                            inactiveTrackColor = CardBg
-                        )
+                            value = sliderGps,
+                            onValueChange = { sliderGps = it },
+                            onValueChangeFinished = { vm.setGpsInterval(sliderGps.toInt()) },
+                            valueRange = 1f..60f,
+                            colors =
+                                    SliderDefaults.colors(
+                                            thumbColor = AccentCyan,
+                                            activeTrackColor = AccentCyan,
+                                            inactiveTrackColor = CardBg
+                                    )
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("1s", color = TextSecondary, fontSize = 10.sp)
                         Text("30s", color = TextSecondary, fontSize = 10.sp)
@@ -220,94 +216,99 @@ fun SettingsScreen(
 
             // Data Management Section
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SectionHeader("DATA MANAGEMENT", Icons.Default.Storage)
+                SectionHeader("MANAJEMEN DATA", Icons.Default.Storage)
 
                 // Auto-upload
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                        colors = CardDefaults.cardColors(containerColor = CardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(Color(0xFF2C3E50), RoundedCornerShape(8.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Wifi, null, tint = TextSecondary)
-                            }
+                                    modifier =
+                                            Modifier.size(40.dp)
+                                                    .background(
+                                                            Color(0xFF2C3E50),
+                                                            RoundedCornerShape(8.dp)
+                                                    ),
+                                    contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Default.Wifi, null, tint = TextSecondary) }
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
-                                    "Auto-upload on WiFi",
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
+                                        "Unggah Otomatis di WiFi",
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
                                 )
                                 Text(
-                                    "Save mobile data usage",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp
+                                        "Hemat penggunaan data seluler",
+                                        color = TextSecondary,
+                                        fontSize = 12.sp
                                 )
                             }
                         }
                         Switch(
-                            checked = ui.autoUpload,
-                            onCheckedChange = { vm.setAutoUpload(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = AccentCyan,
-                                checkedTrackColor = Color(0xFF004D40),
-                                uncheckedThumbColor = TextSecondary,
-                                uncheckedTrackColor = DarkBg
-                            )
+                                checked = ui.autoUpload,
+                                onCheckedChange = { vm.setAutoUpload(it) },
+                                colors =
+                                        SwitchDefaults.colors(
+                                                checkedThumbColor = AccentCyan,
+                                                checkedTrackColor = Color(0xFF004D40),
+                                                uncheckedThumbColor = TextSecondary,
+                                                uncheckedTrackColor = DarkBg
+                                        )
                         )
                     }
                 }
 
                 // Clear Data Button
                 Button(
-                    onClick = { vm.deleteUploadedTrips() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, DeleteRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .height(56.dp)
+                        onClick = { vm.deleteUploadedTrips() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .border(
+                                                1.dp,
+                                                DeleteRed.copy(alpha = 0.5f),
+                                                RoundedCornerShape(12.dp)
+                                        )
+                                        .height(56.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Delete, null, tint = DeleteRed)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Clear Uploaded Data", color = DeleteRed, fontWeight = FontWeight.Bold)
+                        Text(
+                                "Hapus Data Terunggah",
+                                color = DeleteRed,
+                                fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-                
+
                 Text(
-                    "Only removes local copies of data already synced to the cloud.",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                        "Hanya menghapus salinan lokal dari data yang sudah disinkronkan ke cloud.",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            
+
             // Footer
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) • Android SDK ${android.os.Build.VERSION.SDK_INT}",
-                    color = TextSecondary.copy(alpha = 0.5f),
-                    fontSize = 12.sp
+                        "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) • Android SDK ${android.os.Build.VERSION.SDK_INT}",
+                        color = TextSecondary.copy(alpha = 0.5f),
+                        fontSize = 12.sp
                 )
             }
             Spacer(modifier = Modifier.height(32.dp))
@@ -318,60 +319,55 @@ fun SettingsScreen(
 @Composable
 fun UserProfileCard(name: String, id: String, role: String, onClick: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+            colors = CardDefaults.cardColors(containerColor = CardBg),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().clickable { onClick() }
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
                 Image(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(60.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF2C3E50))
-                        .padding(8.dp),
-                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(TextSecondary)
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        modifier =
+                                Modifier.size(60.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF2C3E50))
+                                        .padding(8.dp),
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(TextSecondary)
                 )
                 Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .background(StatusGreen, CircleShape)
-                        .border(2.dp, CardBg, CircleShape)
-                        .align(Alignment.BottomEnd)
+                        modifier =
+                                Modifier.size(16.dp)
+                                        .background(StatusGreen, CircleShape)
+                                        .border(2.dp, CardBg, CircleShape)
+                                        .align(Alignment.BottomEnd)
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(
-                    text = name,
-                    color = TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
+                        text = name,
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "ID: #$id",
-                    color = AccentCyan,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
+                        text = "ID: #$id",
+                        color = AccentCyan,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    color = Color(0xFF1A3F45),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
+                Surface(color = Color(0xFF1A3F45), shape = RoundedCornerShape(4.dp)) {
                     Text(
-                        text = "• $role",
-                        color = AccentCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            text = "• $role",
+                            color = AccentCyan,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -381,170 +377,127 @@ fun UserProfileCard(name: String, id: String, role: String, onClick: () -> Unit)
 
 @Composable
 fun EditProfileDialog(
-    currentName: String,
-    currentEmail: String,
-    currentVehicle: String,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String) -> Unit
+        currentName: String,
+        currentEmail: String,
+        currentVehicle: String,
+        onDismiss: () -> Unit,
+        onSave: (String, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf(currentName) }
     var email by remember { mutableStateOf(currentEmail) }
     var vehicle by remember { mutableStateOf(currentVehicle) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CardBg,
-        title = { Text("Edit Profile", color = TextPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = TextSecondary,
-                        focusedLabelColor = AccentCyan,
-                        unfocusedLabelColor = TextSecondary
+            onDismissRequest = onDismiss,
+            containerColor = CardBg,
+            title = { Text("Edit Profile", color = TextPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text("Name") },
+                            colors =
+                                    OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary,
+                                            focusedBorderColor = AccentCyan,
+                                            unfocusedBorderColor = TextSecondary,
+                                            focusedLabelColor = AccentCyan,
+                                            unfocusedLabelColor = TextSecondary
+                                    )
                     )
-                )
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = TextSecondary,
-                        focusedLabelColor = AccentCyan,
-                        unfocusedLabelColor = TextSecondary
+                    OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            label = { Text("Email") },
+                            colors =
+                                    OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary,
+                                            focusedBorderColor = AccentCyan,
+                                            unfocusedBorderColor = TextSecondary,
+                                            focusedLabelColor = AccentCyan,
+                                            unfocusedLabelColor = TextSecondary
+                                    )
                     )
-                )
-                OutlinedTextField(
-                    value = vehicle,
-                    onValueChange = { vehicle = it },
-                    label = { Text("Vehicle Type (e.g., Motor, Mobil)") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = TextSecondary,
-                        focusedLabelColor = AccentCyan,
-                        unfocusedLabelColor = TextSecondary
+                    OutlinedTextField(
+                            value = vehicle,
+                            onValueChange = { vehicle = it },
+                            label = { Text("Vehicle Type (e.g., Motor, Mobil)") },
+                            colors =
+                                    OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary,
+                                            focusedBorderColor = AccentCyan,
+                                            unfocusedBorderColor = TextSecondary,
+                                            focusedLabelColor = AccentCyan,
+                                            unfocusedLabelColor = TextSecondary
+                                    )
                     )
-                )
+                }
+            },
+            confirmButton = {
+                Button(
+                        onClick = { onSave(name, email, vehicle) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) { Text("Save", color = Color.Black) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onSave(name, email, vehicle) },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Save", color = Color.Black)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
-            }
-        }
     )
 }
 
 @Composable
 fun SectionHeader(title: String, icon: ImageVector) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = AccentCyan,
-            modifier = Modifier.size(16.dp)
-        )
+        Icon(icon, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = title,
-            color = TextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+                text = title,
+                color = TextSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
         )
     }
 }
 
 @Composable
 fun ParameterCard(
-    title: String,
-    subtitle: String,
-    value: String,
-    content: @Composable ColumnScope.() -> Unit
+        title: String,
+        subtitle: String,
+        value: String,
+        content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
+            colors = CardDefaults.cardColors(containerColor = CardBg),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = title,
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                            text = title,
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        text = subtitle,
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
+                    Text(text = subtitle, color = TextSecondary, fontSize = 12.sp)
                 }
-                Surface(
-                    color = AccentCyan.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
+                Surface(color = AccentCyan.copy(alpha = 0.1f), shape = RoundedCornerShape(8.dp)) {
                     Text(
-                        text = value,
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            content()
-        }
-    }
-}
-                    Text(
-                        text = title,
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = subtitle,
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
-                }
-                Surface(
-                    color = DarkBg,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(start = 16.dp)
-                ) {
-                    Text(
-                        text = value,
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            text = value,
+                            color = AccentCyan,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
@@ -556,15 +509,15 @@ fun ParameterCard(
 
 @Composable
 fun Image(
-    imageVector: ImageVector,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    colorFilter: androidx.compose.ui.graphics.ColorFilter? = null
+        imageVector: ImageVector,
+        contentDescription: String?,
+        modifier: Modifier = Modifier,
+        colorFilter: androidx.compose.ui.graphics.ColorFilter? = null
 ) {
     androidx.compose.foundation.Image(
-        imageVector = imageVector,
-        contentDescription = contentDescription,
-        modifier = modifier,
-        colorFilter = colorFilter
+            imageVector = imageVector,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            colorFilter = colorFilter
     )
 }

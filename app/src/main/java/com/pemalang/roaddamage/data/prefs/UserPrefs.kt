@@ -83,5 +83,5 @@ constructor(private val app: Application, private val store: DataStore<Preferenc
         store.edit {
             if (vehicle.isNullOrBlank()) it.remove(vehicleTypeKey) else it[vehicleTypeKey] = vehicle
         }
-    }   
+    }
 }
