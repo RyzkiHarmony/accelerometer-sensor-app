@@ -37,6 +37,7 @@ class RecordingService : Service() {
     @Inject lateinit var userPrefs: UserPrefs
     @Inject lateinit var repository: RecordingRepository
 
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
     private var scope: CoroutineScope? = null
     private var accel: AccelerometerHandler? = null
     private var gps: GPSHandler? = null
@@ -61,10 +62,21 @@ class RecordingService : Service() {
     private fun startRecording() {
         createChannel()
         startForeground(NOTIF_ID, buildNotification("Merekam data"))
+
+        // Acquire WakeLock
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        wakeLock =
+                pm.newWakeLock(
+                        android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                        "RoadDamageDetector::Recording"
+                )
+        wakeLock?.acquire(4 * 60 * 60 * 1000L) // Limit to 4 hours safety timeout
+
         val sManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val samplingHz = runBlocking { userPrefs.getSamplingRateHz() }
         val samplingUs = (1_000_000 / samplingHz).coerceAtLeast(5_000)
         val gpsInterval = runBlocking { userPrefs.getGpsIntervalSec() }
+        val threshold = runBlocking { userPrefs.getSensitivityThreshold() }
         accel = AccelerometerHandler(sManager, samplingUs)
         gps = GPSHandler(application, gpsInterval.toLong())
         scope = CoroutineScope(Dispatchers.Default)
@@ -75,6 +87,18 @@ class RecordingService : Service() {
                     repository.startTrip(userId)
                     accel?.start()
                     launch { gps?.start() }
+
+                    // Observe location and distance to update notification
+                    launch {
+                        repository.distanceFlow.collect { dist ->
+                            val notif = buildNotification("Merekam: %.2f km".format(dist / 1000f))
+                            val nm =
+                                    getSystemService(Context.NOTIFICATION_SERVICE) as
+                                            NotificationManager
+                            nm.notify(NOTIF_ID, notif)
+                        }
+                    }
+
                     gps?.locations?.collect { loc -> latestLocation = loc }
                 }
         scope?.launch {
@@ -84,12 +108,12 @@ class RecordingService : Service() {
                 val z = arr[2]
                 val m = arr[3]
                 val loc = latestLocation
-                val lat = loc?.latitude
-                val lon = loc?.longitude
-                val alt = loc?.altitude
-                val spd = loc?.speed
-                val acc = loc?.accuracy
-                val brg = loc?.bearing
+                val lat = loc?.latitude ?: Double.NaN
+                val lon = loc?.longitude ?: Double.NaN
+                val alt = loc?.altitude ?: Double.NaN
+                val spd = loc?.speed ?: Float.NaN
+                val acc = loc?.accuracy ?: Float.NaN
+                val brg = loc?.bearing ?: Float.NaN
                 val reading =
                         SensorReading(
                                 timestamp = System.currentTimeMillis(),
@@ -104,12 +128,24 @@ class RecordingService : Service() {
                                 accuracy = acc,
                                 bearing = brg
                         )
+                if (m > threshold) {
+                    repository.incrementEventCount()
+                }
                 repository.appendReading(reading)
             }
         }
     }
 
     private fun stopRecording() {
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        wakeLock = null
+
         accel?.stop()
         gps?.stop()
         collectingJob?.cancel()

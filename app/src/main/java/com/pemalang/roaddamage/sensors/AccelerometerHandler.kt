@@ -23,7 +23,11 @@ class AccelerometerHandler(private val sensorManager: SensorManager, private val
     fun start() {
         sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val s = sensor ?: return
-        sensorManager.registerListener(this, s, delay)
+        // Best Practice: Use maxReportLatencyUs to enable hardware FIFO batching.
+        // This allows the AP to sleep while sensor collects data.
+        // We buffer up to 1 second of data.
+        val maxReportLatencyUs = 1_000_000 // 1 second
+        sensorManager.registerListener(this, s, delay, maxReportLatencyUs)
     }
 
     fun stop() {

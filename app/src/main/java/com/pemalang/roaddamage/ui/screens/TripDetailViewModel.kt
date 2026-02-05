@@ -42,6 +42,7 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
         object Deleted : Event()
         data class Error(val message: String) : Event()
         data class Saved(val path: String) : Event()
+        data class Share(val uri: Uri) : Event()
     }
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
@@ -63,18 +64,29 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
         try {
             val file = File(trip.dataFilePath)
             if (file.exists()) {
+                // Downsampling strategy for large files to prevent OOM and UI lag
+                // Target approx 3000 points for optimal graph/map performance
+                val fileLen = file.length()
+                val estLines = fileLen / 60 // Estimate 60 bytes per line
+                val targetPoints = 3000
+                val step = (estLines / targetPoints).toInt().coerceAtLeast(1)
+                
                 BufferedReader(FileReader(file)).use { br ->
                     var line = br.readLine()
+                    var index = 0
                     while (line != null) {
                         if (!line.startsWith("timestamp")) {
-                            val parts = line.split(",")
-                            if (parts.size >= 7) {
-                                val mag = parts[4].toFloatOrNull()
-                                val lat = parts[5].toDoubleOrNull()
-                                val lon = parts[6].toDoubleOrNull()
-                                if (mag != null) mags.add(mag)
-                                if (lat != null && lon != null) pts.add(lat to lon)
+                            if (index % step == 0) {
+                                val parts = line.split(",")
+                                if (parts.size >= 7) {
+                                    val mag = parts[4].toFloatOrNull()
+                                    val lat = parts[5].toDoubleOrNull()
+                                    val lon = parts[6].toDoubleOrNull()
+                                    if (mag != null) mags.add(mag)
+                                    if (lat != null && lon != null) pts.add(lat to lon)
+                                }
                             }
+                            index++
                         }
                         line = br.readLine()
                     }
@@ -122,6 +134,28 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
                 events.tryEmit(Event.Deleted)
             } catch (t: Throwable) {
                 events.tryEmit(Event.Error("Gagal menghapus: ${t.message ?: ""}"))
+            }
+        }
+    }
+
+    fun shareTrip() {
+        val trip = _ui.value.trip ?: return
+        viewModelScope.launch {
+            try {
+                val file = File(trip.dataFilePath)
+                if (file.exists()) {
+                    val uri =
+                            androidx.core.content.FileProvider.getUriForFile(
+                                    app,
+                                    "${app.packageName}.provider",
+                                    file
+                            )
+                    events.tryEmit(Event.Share(uri))
+                } else {
+                    events.tryEmit(Event.Error("File data tidak ditemukan"))
+                }
+            } catch (t: Throwable) {
+                events.tryEmit(Event.Error("Gagal membagikan: ${t.message}"))
             }
         }
     }

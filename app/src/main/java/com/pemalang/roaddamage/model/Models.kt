@@ -9,12 +9,12 @@ data class SensorReading(
     val accelY: Float,
     val accelZ: Float,
     val magnitude: Float,
-    val latitude: Double?,
-    val longitude: Double?,
-    val altitude: Double?,
-    val speed: Float?,
-    val accuracy: Float?,
-    val bearing: Float?
+    val latitude: Double = Double.NaN,
+    val longitude: Double = Double.NaN,
+    val altitude: Double = Double.NaN,
+    val speed: Float = Float.NaN,
+    val accuracy: Float = Float.NaN,
+    val bearing: Float = Float.NaN
 )
 
 @Entity(tableName = "trips")

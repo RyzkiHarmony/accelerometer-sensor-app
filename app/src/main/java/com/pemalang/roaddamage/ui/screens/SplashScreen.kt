@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private val DarkBg = Color(0xFF1A1D26)
-private val AccentCyan = Color(0xFF00E5FF)
+private val AccentGreen = Color(0xFF00E676)
 private val TextPrimary = Color(0xFFFFFFFF)
 
 @Composable
@@ -56,7 +56,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             Image(
                 imageVector = Icons.Default.Warning,
                 contentDescription = "Logo",
-                colorFilter = ColorFilter.tint(AccentCyan),
+                colorFilter = ColorFilter.tint(AccentGreen),
                 modifier = Modifier.size(80.dp)
             )
             Spacer(modifier = Modifier.height(16.dp))

@@ -24,10 +24,16 @@ class GPSHandler(private val app: Application, private val intervalSec: Long) {
 
     @SuppressLint("MissingPermission")
     suspend fun start() {
+        // Best Practice: Allow batching to save battery.
+        // setMaxUpdateDelayMillis allows the system to batch location updates.
+        // We set it to 2x the interval or at least 5 seconds.
+        val maxDelay = (intervalSec * 2 * 1000).coerceAtLeast(5000)
+        
         val request =
                 LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalSec * 1000)
                         .setWaitForAccurateLocation(false)
                         .setMinUpdateIntervalMillis(intervalSec * 1000)
+                        .setMaxUpdateDelayMillis(maxDelay)
                         .build()
         callback =
                 object : LocationCallback() {

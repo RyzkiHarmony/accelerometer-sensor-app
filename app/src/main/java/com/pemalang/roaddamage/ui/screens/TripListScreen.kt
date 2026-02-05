@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,7 +32,7 @@ import java.util.*
 
 private val DarkBg = Color(0xFF1A1D26)
 private val CardBg = Color(0xFF242834)
-private val AccentCyan = Color(0xFF00E5FF)
+private val AccentGreen = Color(0xFF00E676)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8F9BB3)
 private val StatusGreen = Color(0xFF00E676)
@@ -60,6 +61,38 @@ fun TripListScreen(
     var filter by remember { mutableStateOf("All") } // All, Uploaded, Pending
     var sortOption by remember { mutableStateOf(SortOption.NEWEST) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var tripToDelete by remember { mutableStateOf<Trip?>(null) }
+
+    if (tripToDelete != null) {
+        AlertDialog(
+                onDismissRequest = { tripToDelete = null },
+                title = {
+                    Text("Konfirmasi Hapus", color = TextPrimary, fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                            "Apakah Anda yakin ingin menghapus data perjalanan ini? Data yang dihapus tidak dapat dikembalikan.",
+                            color = TextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                            onClick = {
+                                vm.deleteTrip(tripToDelete!!)
+                                tripToDelete = null
+                            }
+                    ) { Text("Hapus", color = DeleteRed, fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { tripToDelete = null }) {
+                        Text("Batal", color = TextSecondary)
+                    }
+                },
+                containerColor = CardBg,
+                textContentColor = TextSecondary,
+                titleContentColor = TextPrimary
+        )
+    }
 
     val filteredTrips =
             remember(trips, filter, sortOption) {
@@ -99,7 +132,7 @@ fun TripListScreen(
             containerColor = DarkBg,
             snackbarHost = { SnackbarHost(hostState = host) },
             bottomBar = {
-                NavigationBar(containerColor = DarkBg, contentColor = AccentCyan) {
+                NavigationBar(containerColor = DarkBg, contentColor = AccentGreen) {
                     NavigationBarItem(
                             selected = false,
                             onClick = onNavigateHome,
@@ -107,8 +140,8 @@ fun TripListScreen(
                             label = { Text("Home") },
                             colors =
                                     NavigationBarItemDefaults.colors(
-                                            selectedIconColor = AccentCyan,
-                                            selectedTextColor = AccentCyan,
+                                            selectedIconColor = AccentGreen,
+                                            selectedTextColor = AccentGreen,
                                             unselectedIconColor = TextSecondary,
                                             unselectedTextColor = TextSecondary,
                                             indicatorColor = CardBg
@@ -121,8 +154,8 @@ fun TripListScreen(
                             label = { Text("History") },
                             colors =
                                     NavigationBarItemDefaults.colors(
-                                            selectedIconColor = AccentCyan,
-                                            selectedTextColor = AccentCyan,
+                                            selectedIconColor = AccentGreen,
+                                            selectedTextColor = AccentGreen,
                                             unselectedIconColor = TextSecondary,
                                             unselectedTextColor = TextSecondary,
                                             indicatorColor = CardBg
@@ -135,8 +168,8 @@ fun TripListScreen(
                             label = { Text("Settings") },
                             colors =
                                     NavigationBarItemDefaults.colors(
-                                            selectedIconColor = AccentCyan,
-                                            selectedTextColor = AccentCyan,
+                                            selectedIconColor = AccentGreen,
+                                            selectedTextColor = AccentGreen,
                                             unselectedIconColor = TextSecondary,
                                             unselectedTextColor = TextSecondary,
                                             indicatorColor = CardBg
@@ -148,7 +181,7 @@ fun TripListScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
             Text(
                     text = "LOG DATA",
-                    color = AccentCyan,
+                    color = AccentGreen,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
             )
@@ -175,7 +208,11 @@ fun TripListScreen(
 
                 Box {
                     IconButton(onClick = { showSortMenu = true }) {
-                        Icon(Icons.Default.Sort, contentDescription = "Urutkan", tint = AccentCyan)
+                        Icon(
+                                Icons.AutoMirrored.Filled.Sort,
+                                contentDescription = "Urutkan",
+                                tint = AccentGreen
+                        )
                     }
                     DropdownMenu(
                             expanded = showSortMenu,
@@ -216,48 +253,72 @@ fun TripListScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filteredTrips, key = { it.tripId }) { trip ->
-                    val dismissState =
-                            rememberSwipeToDismissBoxState(
-                                    confirmValueChange = {
-                                        if (it == SwipeToDismissBoxValue.EndToStart) {
-                                            vm.deleteTrip(trip)
-                                            true
-                                        } else {
-                                            false
+            if (filteredTrips.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                                Icons.Default.DirectionsCar,
+                                contentDescription = null,
+                                tint = TextSecondary.copy(alpha = 0.5f),
+                                modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                                text = "Belum ada perjalanan",
+                                color = TextSecondary,
+                                fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                                text = "Mulai rekam perjalanan Anda sekarang!",
+                                color = TextSecondary.copy(alpha = 0.7f),
+                                fontSize = 12.sp
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredTrips, key = { it.tripId }) { trip ->
+                        val dismissState =
+                                rememberSwipeToDismissBoxState(
+                                        confirmValueChange = {
+                                            if (it == SwipeToDismissBoxValue.EndToStart) {
+                                                tripToDelete = trip
+                                                false
+                                            } else {
+                                                false
+                                            }
                                         }
-                                    }
-                            )
+                                )
 
-                    SwipeToDismissBox(
-                            state = dismissState,
-                            backgroundContent = {
-                                val color = DeleteRed
-                                Box(
-                                        modifier =
-                                                Modifier.fillMaxSize()
-                                                        .background(
-                                                                color,
-                                                                RoundedCornerShape(16.dp)
-                                                        )
-                                                        .padding(horizontal = 20.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                ) {
-                                    Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = Color.White
-                                    )
-                                }
-                            },
-                            content = { TripCard(trip = trip, onClick = { onOpenTrip(trip) }) },
-                            enableDismissFromStartToEnd = false,
-                            enableDismissFromEndToStart = true
-                    )
+                        SwipeToDismissBox(
+                                state = dismissState,
+                                backgroundContent = {
+                                    val color = DeleteRed
+                                    Box(
+                                            modifier =
+                                                    Modifier.fillMaxSize()
+                                                            .background(
+                                                                    color,
+                                                                    RoundedCornerShape(16.dp)
+                                                            )
+                                                            .padding(horizontal = 20.dp),
+                                            contentAlignment = Alignment.CenterEnd
+                                    ) {
+                                        Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Delete",
+                                                tint = Color.White
+                                        )
+                                    }
+                                },
+                                content = { TripCard(trip = trip, onClick = { onOpenTrip(trip) }) },
+                                enableDismissFromStartToEnd = false,
+                                enableDismissFromEndToStart = true
+                        )
+                    }
                 }
             }
         }
@@ -270,7 +331,7 @@ fun FilterButton(text: String, selected: Boolean, onClick: () -> Unit) {
             onClick = onClick,
             colors =
                     ButtonDefaults.buttonColors(
-                            containerColor = if (selected) AccentCyan else CardBg,
+                            containerColor = if (selected) AccentGreen else CardBg,
                             contentColor = if (selected) Color.Black else TextSecondary
                     ),
             shape = RoundedCornerShape(20.dp),
@@ -379,7 +440,7 @@ fun TripCard(trip: Trip, onClick: () -> Unit) {
                         )
                         Text(
                                 " km",
-                                color = AccentCyan,
+                                color = AccentGreen,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(bottom = 3.dp)

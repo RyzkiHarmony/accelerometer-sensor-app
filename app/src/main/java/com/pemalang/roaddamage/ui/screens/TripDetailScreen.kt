@@ -39,12 +39,12 @@ import org.osmdroid.views.overlay.Polyline
 
 private val DarkBg = Color(0xFF1A1D26)
 private val CardBg = Color(0xFF242834)
-private val AccentCyan = Color(0xFF00E5FF)
+private val AccentGreen = Color(0xFF00E676)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8F9BB3)
 private val StatusGreen = Color(0xFF00E676)
 private val StatusOrange = Color(0xFFFFAB40)
-private val GraphLine = Color(0xFF00E5FF)
+private val GraphLine = Color(0xFF00E676)
 private val SpikeRed = Color(0xFFEF5350)
 
 @Composable
@@ -52,7 +52,39 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
     val vm: TripDetailViewModel = hiltViewModel()
     val ui by vm.ui.collectAsState()
     val host = remember { SnackbarHostState() }
+    val showDeleteDialog = remember { mutableStateOf(false) }
     val ctx = LocalContext.current
+
+    if (showDeleteDialog.value) {
+        AlertDialog(
+                onDismissRequest = { showDeleteDialog.value = false },
+                title = {
+                    Text("Konfirmasi Hapus", color = TextPrimary, fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                            "Apakah Anda yakin ingin menghapus data perjalanan ini? Data yang dihapus tidak dapat dikembalikan.",
+                            color = TextSecondary
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                            onClick = {
+                                vm.deleteTrip()
+                                showDeleteDialog.value = false
+                            }
+                    ) { Text("Hapus", color = SpikeRed, fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog.value = false }) {
+                        Text("Batal", color = TextSecondary)
+                    }
+                },
+                containerColor = CardBg,
+                textContentColor = TextSecondary,
+                titleContentColor = TextPrimary
+        )
+    }
 
     LaunchedEffect(tripId) { vm.load(tripId) }
     LaunchedEffect(Unit) {
@@ -61,6 +93,17 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                 is TripDetailViewModel.Event.Deleted -> onBack()
                 is TripDetailViewModel.Event.Error -> host.showSnackbar(e.message)
                 is TripDetailViewModel.Event.Saved -> host.showSnackbar(e.path)
+                is TripDetailViewModel.Event.Share -> {
+                    val intent =
+                            android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(android.content.Intent.EXTRA_STREAM, e.uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                    ctx.startActivity(
+                            android.content.Intent.createChooser(intent, "Bagikan Perjalanan")
+                    )
+                }
             }
         }
     }
@@ -77,14 +120,11 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                         } else ""
 
                 Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(16.dp),
+                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
                     }
                     Column(
                             modifier = Modifier.weight(1f),
@@ -99,7 +139,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                         Text(text = dateStr, color = TextSecondary, fontSize = 12.sp)
                     }
                     Row {
-                        IconButton(onClick = { /* TODO: Implement Share */}) {
+                        IconButton(onClick = { vm.shareTrip() }) {
                             Icon(Icons.Default.Share, "Share", tint = TextPrimary)
                         }
                         IconButton(onClick = { vm.saveToDownloads() }) {
@@ -146,7 +186,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                     Icon(
                                             Icons.Filled.BarChart,
                                             null,
-                                            tint = AccentCyan,
+                                            tint = AccentGreen,
                                             modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -235,7 +275,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                         onClick = { vm.enqueueUpload() },
                                         colors =
                                                 ButtonDefaults.buttonColors(
-                                                        containerColor = AccentCyan
+                                                        containerColor = AccentGreen
                                                 ),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding =
@@ -252,7 +292,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             IconButton(
-                                    onClick = { vm.deleteTrip() },
+                                    onClick = { showDeleteDialog.value = true },
                                     modifier =
                                             Modifier.size(32.dp)
                                                     .background(
@@ -272,7 +312,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                 }
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentCyan)
+                    CircularProgressIndicator(color = AccentGreen)
                 }
             }
         }
@@ -414,7 +454,7 @@ private fun MapSection(ctx: Context, points: List<Pair<Double, Double>>) {
                     val geoPoints = points.map { GeoPoint(it.first, it.second) }
                     val polyline =
                             Polyline().apply {
-                                outlinePaint.color = AndroidColor.parseColor("#00E5FF") // Cyan
+                                outlinePaint.color = AndroidColor.parseColor("#00E676") // Green
                                 outlinePaint.strokeWidth = 8f
                                 setPoints(geoPoints)
                             }

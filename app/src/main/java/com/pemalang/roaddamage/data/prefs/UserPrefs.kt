@@ -5,12 +5,15 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 @Singleton
 class UserPrefs
@@ -23,6 +26,9 @@ constructor(private val app: Application, private val store: DataStore<Preferenc
     private val userNameKey = stringPreferencesKey("user_name")
     private val userEmailKey = stringPreferencesKey("user_email")
     private val vehicleTypeKey = stringPreferencesKey("vehicle_type")
+    private val sensitivityKey = floatPreferencesKey("sensitivity_threshold")
+
+    val samplingRateFlow: Flow<Int> = store.data.map { prefs -> prefs[samplingHzKey] ?: 50 }
 
     suspend fun getOrCreateUserId(): String {
         val prefs = store.data.first()
@@ -83,5 +89,15 @@ constructor(private val app: Application, private val store: DataStore<Preferenc
         store.edit {
             if (vehicle.isNullOrBlank()) it.remove(vehicleTypeKey) else it[vehicleTypeKey] = vehicle
         }
+    }
+
+    val sensitivityFlow: Flow<Float> = store.data.map { prefs -> prefs[sensitivityKey] ?: 2.0f }
+
+    suspend fun getSensitivityThreshold(): Float {
+        val prefs = store.data.first()
+        return prefs[sensitivityKey] ?: 2.0f
+    }
+    suspend fun setSensitivityThreshold(value: Float) {
+        store.edit { it[sensitivityKey] = value }
     }
 }

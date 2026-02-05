@@ -63,7 +63,7 @@ fun AppNavHost(navController: NavHostController = rememberNavController()) {
                 )
             }
             composable(Routes.Trips) {
-                TripListScreen(
+                com.pemalang.roaddamage.ui.screens.TripListScreen(
                         onOpenTrip = { trip -> navController.navigate("detail/${trip.tripId}") },
                         onNavigateHome = {
                             navController.navigate(Routes.Home) {

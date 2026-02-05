@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pemalang.roaddamage.data.local.TripDao
+import com.pemalang.roaddamage.data.prefs.UserPrefs
 import com.pemalang.roaddamage.recording.RecordingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -20,7 +21,8 @@ class RecordingViewModel
 constructor(
         private val app: Application,
         private val repo: RecordingRepository,
-        private val tripDao: TripDao
+        private val tripDao: TripDao,
+        private val prefs: UserPrefs
 ) : ViewModel() {
     private val _magnitudes = MutableStateFlow<List<Float>>(emptyList())
     private val _ax = MutableStateFlow<List<Float>>(emptyList())
@@ -35,6 +37,7 @@ constructor(
     val distance: StateFlow<Float> = repo.distanceFlow
     val recording: StateFlow<Boolean> = repo.recordingFlow
     val startTime: StateFlow<Long> = repo.startTimeFlow
+    val eventCount: StateFlow<Int> = repo.eventCountFlow
     private val _gpsActive = MutableStateFlow(false)
     val gpsActive: StateFlow<Boolean> = _gpsActive
     val gpsAccuracy: StateFlow<Float?> = repo.gpsAccuracyFlow
@@ -42,27 +45,47 @@ constructor(
             tripDao.observeCount().stateIn(viewModelScope, SharingStarted.Lazily, 0)
     val totalDistance: StateFlow<Float?> =
             tripDao.observeTotalDistance().stateIn(viewModelScope, SharingStarted.Lazily, 0f)
+    val samplingRate: StateFlow<Int> =
+            prefs.samplingRateFlow.stateIn(viewModelScope, SharingStarted.Lazily, 50)
+    val sensitivityThreshold: StateFlow<Float> =
+            prefs.sensitivityFlow.stateIn(viewModelScope, SharingStarted.Lazily, 2.0f)
 
     init {
         viewModelScope.launch {
+            // UI Optimization: Batch updates to reduce recomposition frequency.
+            // Instead of updating on every sensor event (50-100Hz), we update at ~10Hz.
+            val buffer = mutableListOf<com.pemalang.roaddamage.model.SensorReading>()
+            var lastUpdate = System.currentTimeMillis()
+
             repo.readingsFlow.collect { r ->
-                val src = _magnitudes.value
-                val dst =
-                        if (src.size >= 200) src.drop(src.size - 199) + r.magnitude
-                        else src + r.magnitude
-                _magnitudes.value = dst
-                val xsrc = _ax.value
-                val ysrc = _ay.value
-                val zsrc = _az.value
-                _ax.value =
-                        if (xsrc.size >= 200) xsrc.drop(xsrc.size - 199) + r.accelX
-                        else xsrc + r.accelX
-                _ay.value =
-                        if (ysrc.size >= 200) ysrc.drop(ysrc.size - 199) + r.accelY
-                        else ysrc + r.accelY
-                _az.value =
-                        if (zsrc.size >= 200) zsrc.drop(zsrc.size - 199) + r.accelZ
-                        else zsrc + r.accelZ
+                buffer.add(r)
+                val now = System.currentTimeMillis()
+                if (now - lastUpdate >= 22) { // 22ms throttle (approx 45 FPS)
+                    if (buffer.isNotEmpty()) {
+                        // Update Magnitudes
+                        val newMags = buffer.map { it.magnitude }
+                        val currentMags = _magnitudes.value
+                        _magnitudes.value = (currentMags + newMags).takeLast(200)
+
+                        // Update Ax
+                        val newAx = buffer.map { it.accelX }
+                        val currentAx = _ax.value
+                        _ax.value = (currentAx + newAx).takeLast(200)
+
+                        // Update Ay
+                        val newAy = buffer.map { it.accelY }
+                        val currentAy = _ay.value
+                        _ay.value = (currentAy + newAy).takeLast(200)
+
+                        // Update Az
+                        val newAz = buffer.map { it.accelZ }
+                        val currentAz = _az.value
+                        _az.value = (currentAz + newAz).takeLast(200)
+
+                        buffer.clear()
+                    }
+                    lastUpdate = now
+                }
             }
         }
         viewModelScope.launch {

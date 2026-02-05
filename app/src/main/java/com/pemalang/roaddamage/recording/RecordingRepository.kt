@@ -17,6 +17,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Singleton
@@ -43,6 +45,7 @@ constructor(private val app: Application, private val tripDao: TripDao) {
     private val _distance = MutableStateFlow(0f)
     private val _recording = MutableStateFlow(false)
     private val _startTime = MutableStateFlow(0L)
+    private val _eventCount = MutableStateFlow(0)
     private val _gpsLastTs = MutableStateFlow(0L)
     private val _gpsAccuracy = MutableStateFlow<Float?>(null)
     val readingsFlow: MutableSharedFlow<SensorReading> = _readings
@@ -50,8 +53,14 @@ constructor(private val app: Application, private val tripDao: TripDao) {
     val distanceFlow: StateFlow<Float> = _distance
     val recordingFlow: StateFlow<Boolean> = _recording
     val startTimeFlow: StateFlow<Long> = _startTime
+    val eventCountFlow: StateFlow<Int> = _eventCount
     val gpsLastTs: StateFlow<Long> = _gpsLastTs
     val gpsAccuracyFlow: StateFlow<Float?> = _gpsAccuracy
+
+    // IO Optimization: Buffer for writing to file
+    private val readingBuffer = ArrayList<String>(60)
+    private val BATCH_SIZE = 50
+    private val bufferMutex = Mutex()
 
     suspend fun startTrip(userId: String): Trip {
         val tripId = UUID.randomUUID().toString()
@@ -81,24 +90,36 @@ constructor(private val app: Application, private val tripDao: TripDao) {
         _distance.value = 0f
         _recording.value = true
         _startTime.value = now
+        _eventCount.value = 0
         tripDao.upsert(trip)
         return trip
     }
 
+    fun incrementEventCount() {
+        _eventCount.value += 1
+    }
+
     suspend fun appendReading(reading: SensorReading) {
-        withContext(Dispatchers.IO) {
-            writer?.apply {
-                write(
-                        "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
-                                "${reading.latitude ?: ""},${reading.longitude ?: ""},${reading.altitude ?: ""}," +
-                                "${reading.speed ?: ""},${reading.accuracy ?: ""},${reading.bearing ?: ""}\n"
-                )
-            }
+        val line = "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
+                "${if (reading.latitude.isNaN()) "" else reading.latitude}," +
+                "${if (reading.longitude.isNaN()) "" else reading.longitude}," +
+                "${if (reading.altitude.isNaN()) "" else reading.altitude}," +
+                "${if (reading.speed.isNaN()) "" else reading.speed}," +
+                "${if (reading.accuracy.isNaN()) "" else reading.accuracy}," +
+                "${if (reading.bearing.isNaN()) "" else reading.bearing}\n"
+        
+        bufferMutex.withLock {
+            readingBuffer.add(line)
         }
+        
+        if (readingBuffer.size >= BATCH_SIZE) {
+            flushBufferSuspend()
+        }
+
         _readings.tryEmit(reading)
         val lat = reading.latitude
         val lon = reading.longitude
-        if (lat != null && lon != null) {
+        if (!lat.isNaN() && !lon.isNaN()) {
             val prevLat = lastLat
             val prevLon = lastLon
             if (prevLat != null && prevLon != null) {
@@ -109,11 +130,12 @@ constructor(private val app: Application, private val tripDao: TripDao) {
             _points.tryEmit(lat to lon)
             _distance.value = totalDistance
             _gpsLastTs.value = System.currentTimeMillis()
-            _gpsAccuracy.value = reading.accuracy
+            _gpsAccuracy.value = if (reading.accuracy.isNaN()) null else reading.accuracy
         }
     }
 
     suspend fun finishTrip(): Trip? {
+        flushBufferSuspend()
         withContext(Dispatchers.IO) {
             writer?.flush()
             writer?.close()
@@ -127,5 +149,22 @@ constructor(private val app: Application, private val tripDao: TripDao) {
         currentTrip = null
         _recording.value = false
         return updated
+    }
+
+    private suspend fun flushBufferSuspend() {
+        val chunk = bufferMutex.withLock {
+            val c = ArrayList(readingBuffer)
+            readingBuffer.clear()
+            c
+        }
+        if (chunk.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                writer?.apply {
+                    for (line in chunk) {
+                        write(line)
+                    }
+                }
+            }
+        }
     }
 }

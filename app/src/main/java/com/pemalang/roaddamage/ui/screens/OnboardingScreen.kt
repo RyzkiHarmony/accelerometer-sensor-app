@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val DarkBg = Color(0xFF1A1D26)
-private val AccentCyan = Color(0xFF00E5FF)
+private val AccentGreen = Color(0xFF00E676)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8F9BB3)
 
@@ -46,7 +46,7 @@ fun OnboardingScreen(onContinue: () -> Unit) {
                     modifier =
                             Modifier.size(160.dp)
                                     .background(
-                                            AccentCyan.copy(alpha = 0.1f),
+                                            AccentGreen.copy(alpha = 0.1f),
                                             RoundedCornerShape(80.dp)
                                     ),
                     contentAlignment = Alignment.Center
@@ -54,7 +54,7 @@ fun OnboardingScreen(onContinue: () -> Unit) {
                 Icon(
                         imageVector = Icons.Default.AddRoad,
                         contentDescription = null,
-                        tint = AccentCyan,
+                        tint = AccentGreen,
                         modifier = Modifier.size(80.dp)
                 )
             }
@@ -90,7 +90,7 @@ fun OnboardingScreen(onContinue: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     colors =
                             ButtonDefaults.buttonColors(
-                                    containerColor = AccentCyan,
+                                    containerColor = AccentGreen,
                                     contentColor = DarkBg
                             ),
                     shape = RoundedCornerShape(12.dp)
