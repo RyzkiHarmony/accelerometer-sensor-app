@@ -8,9 +8,9 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,11 +30,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.pemalang.roaddamage.model.CameraEvent
 import com.pemalang.roaddamage.model.UploadStatus
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -59,6 +63,24 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
     val host = remember { SnackbarHostState() }
     val showDeleteDialog = remember { mutableStateOf(false) }
     val ctx = LocalContext.current
+
+    // State for image viewing
+    var selectedEvent by remember { mutableStateOf<CameraEvent?>(null) }
+    var showFullScreenImage by remember { mutableStateOf(false) }
+
+    // Event Preview Dialog (Thumbnail)
+    if (selectedEvent != null && !showFullScreenImage) {
+        EventPreviewDialog(
+                event = selectedEvent!!,
+                onDismiss = { selectedEvent = null },
+                onImageClick = { showFullScreenImage = true }
+        )
+    }
+
+    // Full Screen Image Dialog
+    if (selectedEvent != null && showFullScreenImage) {
+        FullScreenImageDialog(event = selectedEvent!!, onDismiss = { showFullScreenImage = false })
+    }
 
     if (showDeleteDialog.value) {
         AlertDialog(
@@ -160,7 +182,12 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
             if (trip != null) {
                 // Map Section
                 Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    MapSection(ctx = ctx, points = ui.points, cameraEvents = ui.cameraEvents)
+                    MapSection(
+                            ctx = ctx,
+                            points = ui.points,
+                            cameraEvents = ui.cameraEvents,
+                            onEventClick = { event -> selectedEvent = event }
+                    )
 
                     // Overlay stats on map bottom
                     Row(
@@ -217,82 +244,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
 
                     if (ui.cameraEvents.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
-
-                        // Gallery Section
-                        Card(
-                                colors = CardDefaults.cardColors(containerColor = CardBg),
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                            Icons.Default.PhotoCamera,
-                                            null,
-                                            tint = AccentGreen,
-                                            modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                            "Captured Photos (${ui.cameraEvents.size})",
-                                            color = TextPrimary,
-                                            fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                androidx.compose.foundation.lazy.LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(ui.cameraEvents.size) { i ->
-                                        val event = ui.cameraEvents[i]
-                                        val file = java.io.File(event.imagePath)
-                                        if (file.exists()) {
-                                            val bitmap =
-                                                    remember(file) {
-                                                        android.graphics.BitmapFactory.decodeFile(
-                                                                file.absolutePath
-                                                        )
-                                                    }
-                                            if (bitmap != null) {
-                                                Column(
-                                                        horizontalAlignment =
-                                                                Alignment.CenterHorizontally
-                                                ) {
-                                                    androidx.compose.foundation.Image(
-                                                            bitmap = bitmap.asImageBitmap(),
-                                                            contentDescription = null,
-                                                            contentScale =
-                                                                    androidx.compose.ui.layout
-                                                                            .ContentScale.Crop,
-                                                            modifier =
-                                                                    Modifier.size(100.dp)
-                                                                            .background(
-                                                                                    Color.Black,
-                                                                                    RoundedCornerShape(
-                                                                                            8.dp
-                                                                                    )
-                                                                            )
-                                                                            .border(
-                                                                                    1.dp,
-                                                                                    Color.Gray,
-                                                                                    RoundedCornerShape(
-                                                                                            8.dp
-                                                                                    )
-                                                                            )
-                                                    )
-                                                    Spacer(modifier = Modifier.height(4.dp))
-                                                    Text(
-                                                            "${event.triggerMagnitude} G",
-                                                            color = TextSecondary,
-                                                            fontSize = 10.sp
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // Gallery removed as requested - images are now shown via map markers
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -450,7 +402,8 @@ private fun markerDrawable(ctx: Context, color: Int): BitmapDrawable {
 private fun MapSection(
         ctx: Context,
         points: List<Pair<Double, Double>>,
-        cameraEvents: List<CameraEvent> = emptyList()
+        cameraEvents: List<CameraEvent> = emptyList(),
+        onEventClick: (CameraEvent) -> Unit
 ) {
     val appCtx = ctx.applicationContext
     val base = remember { java.io.File(appCtx.cacheDir, "osmdroid") }
@@ -575,7 +528,7 @@ private fun MapSection(
                                                 ) // Use yellow for photos
                                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                                         setOnMarkerClickListener { m, _ ->
-                                            m.showInfoWindow()
+                                            onEventClick(event)
                                             true
                                         }
                                     }
@@ -651,5 +604,242 @@ private fun MagnitudeGraph(magnitudes: List<Float>, modifier: Modifier = Modifie
         }
 
         drawPath(path = path, color = GraphLine, style = Stroke(width = 3f))
+    }
+}
+
+// Helper function to load bitmap asynchronously
+suspend fun loadBitmapAsync(path: String, reqWidth: Int? = null, reqHeight: Int? = null): Bitmap? =
+        withContext(Dispatchers.IO) {
+            val file = java.io.File(path)
+            if (!file.exists()) return@withContext null
+
+            try {
+                if (reqWidth != null && reqHeight != null) {
+                    // First decode with inJustDecodeBounds=true to check dimensions
+                    val options =
+                            android.graphics.BitmapFactory.Options().apply {
+                                inJustDecodeBounds = true
+                            }
+                    android.graphics.BitmapFactory.decodeFile(path, options)
+
+                    // Calculate inSampleSize
+                    options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+
+                    // Decode bitmap with inSampleSize set
+                    options.inJustDecodeBounds = false
+                    android.graphics.BitmapFactory.decodeFile(path, options)
+                } else {
+                    android.graphics.BitmapFactory.decodeFile(path)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+
+fun calculateInSampleSize(
+        options: android.graphics.BitmapFactory.Options,
+        reqWidth: Int,
+        reqHeight: Int
+): Int {
+    // Raw height and width of image
+    val (height: Int, width: Int) = options.outHeight to options.outWidth
+    var inSampleSize = 1
+
+    if (height > reqHeight || width > reqWidth) {
+        val halfHeight: Int = height / 2
+        val halfWidth: Int = width / 2
+
+        // Calculate the largest inSampleSize value that is a power of 2 and keeps both
+        // height and width larger than the requested height and width.
+        while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+            inSampleSize *= 2
+        }
+    }
+
+    return inSampleSize
+}
+
+@Composable
+fun AsyncImage(
+        path: String,
+        contentDescription: String?,
+        modifier: Modifier = Modifier,
+        contentScale: ContentScale = ContentScale.Fit,
+        reqWidth: Int? = null,
+        reqHeight: Int? = null
+) {
+    val bitmapState =
+            produceState<Bitmap?>(initialValue = null, key1 = path) {
+                value = loadBitmapAsync(path, reqWidth, reqHeight)
+            }
+
+    if (bitmapState.value != null) {
+        androidx.compose.foundation.Image(
+                bitmap = bitmapState.value!!.asImageBitmap(),
+                contentDescription = contentDescription,
+                contentScale = contentScale,
+                modifier = modifier
+        )
+    } else {
+        Box(
+                modifier = modifier.background(Color.Gray.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+        ) { CircularProgressIndicator(color = AccentGreen, modifier = Modifier.size(24.dp)) }
+    }
+}
+
+@Composable
+fun EventPreviewDialog(event: CameraEvent, onDismiss: () -> Unit, onImageClick: () -> Unit) {
+    AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = CardBg,
+            title = {
+                Text(
+                        "Detail Anomali",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Info
+                    Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("G-Force", color = TextSecondary, fontSize = 12.sp)
+                            Text(
+                                    "${event.triggerMagnitude} G",
+                                    color = SpikeRed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Waktu", color = TextSecondary, fontSize = 12.sp)
+                            Text(
+                                    SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                                            .format(Date(event.timestamp)),
+                                    color = TextPrimary,
+                                    fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Image Thumbnail
+                    val file = java.io.File(event.imagePath)
+                    if (file.exists()) {
+                        Box(modifier = Modifier.clickable { onImageClick() }) {
+                            AsyncImage(
+                                    path = event.imagePath,
+                                    contentDescription = "Anomaly Image",
+                                    modifier =
+                                            Modifier.size(200.dp)
+                                                    .background(
+                                                            Color.Black,
+                                                            RoundedCornerShape(8.dp)
+                                                    )
+                                                    .border(
+                                                            1.dp,
+                                                            Color.Gray,
+                                                            RoundedCornerShape(8.dp)
+                                                    ),
+                                    contentScale = ContentScale.Crop,
+                                    reqWidth = 400,
+                                    reqHeight = 400
+                            )
+                            // Magnifier Icon Overlay
+                            Icon(
+                                    Icons.Default.ZoomIn,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier =
+                                            Modifier.align(Alignment.BottomEnd)
+                                                    .padding(8.dp)
+                                                    .background(
+                                                            Color.Black.copy(alpha = 0.5f),
+                                                            CircleShape
+                                                    )
+                                                    .padding(4.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                                "(Klik gambar untuk memperbesar)",
+                                color = TextSecondary,
+                                fontSize = 10.sp
+                        )
+                    } else {
+                        Text("File gambar tidak ditemukan", color = SpikeRed)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text("Tutup", color = AccentGreen) }
+            }
+    )
+}
+
+@Composable
+fun FullScreenImageDialog(event: CameraEvent, onDismiss: () -> Unit) {
+    Dialog(
+            onDismissRequest = onDismiss,
+            properties =
+                    DialogProperties(
+                            usePlatformDefaultWidth = false,
+                            decorFitsSystemWindows = false
+                    )
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            val file = java.io.File(event.imagePath)
+            if (file.exists()) {
+                AsyncImage(
+                        path = event.imagePath,
+                        contentDescription = "Full Screen Image",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Close Button
+            IconButton(
+                    onClick = onDismiss,
+                    modifier =
+                            Modifier.align(Alignment.TopEnd)
+                                    .padding(16.dp)
+                                    .statusBarsPadding()
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White) }
+
+            // Info Overlay
+            Column(
+                    modifier =
+                            Modifier.align(Alignment.BottomStart)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .padding(16.dp)
+                                    .navigationBarsPadding()
+            ) {
+                Text(
+                        "G-Force: ${event.triggerMagnitude} G",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                )
+                Text(
+                        SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault())
+                                .format(Date(event.timestamp)),
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 12.sp
+                )
+            }
+        }
     }
 }

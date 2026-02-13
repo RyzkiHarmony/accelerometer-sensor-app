@@ -256,20 +256,24 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateHome: () -> Unit, onNavigateTri
                                                         fontSize = 10.sp
                                                 )
 
+                                                // Local state for text input to allow intermediate values
+                                                var textValue by remember { mutableStateOf(String.format(java.util.Locale.US, "%.1f", sliderSensitivity)) }
+
+                                                // Sync textValue when sliderSensitivity changes externally
+                                                LaunchedEffect(sliderSensitivity) {
+                                                    val parsed = textValue.toFloatOrNull()
+                                                    if (parsed == null || kotlin.math.abs(parsed - sliderSensitivity) > 0.05f) {
+                                                        textValue = String.format(java.util.Locale.US, "%.1f", sliderSensitivity)
+                                                    }
+                                                }
+
                                                 // Input Field
                                                 androidx.compose.material3.OutlinedTextField(
-                                                        value =
-                                                                if (sliderSensitivity == 0f) ""
-                                                                else
-                                                                        "%.1f".format(
-                                                                                java.util.Locale.US,
-                                                                                sliderSensitivity
-                                                                        ),
+                                                        value = textValue,
                                                         onValueChange = { str ->
+                                                                textValue = str
                                                                 val num = str.toFloatOrNull()
-                                                                if (num != null &&
-                                                                                num in 1.4f..100.0f
-                                                                ) {
+                                                                if (num != null && num in 1.4f..100.0f) {
                                                                         sliderSensitivity = num
                                                                         vm.setSensitivity(num)
                                                                 }
