@@ -2,6 +2,7 @@ package com.pemalang.roaddamage.recording
 
 import android.app.Application
 import com.pemalang.roaddamage.data.local.TripDao
+import com.pemalang.roaddamage.model.CameraEvent
 import com.pemalang.roaddamage.model.SensorReading
 import com.pemalang.roaddamage.model.Trip
 import com.pemalang.roaddamage.model.UploadStatus
@@ -48,6 +49,12 @@ constructor(private val app: Application, private val tripDao: TripDao) {
     private val _eventCount = MutableStateFlow(0)
     private val _gpsLastTs = MutableStateFlow(0L)
     private val _gpsAccuracy = MutableStateFlow<Float?>(null)
+    private val _cameraTrigger =
+            MutableSharedFlow<Float>(
+                    replay = 0,
+                    extraBufferCapacity = 8,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
     val readingsFlow: MutableSharedFlow<SensorReading> = _readings
     val pointsFlow: MutableSharedFlow<Pair<Double, Double>> = _points
     val distanceFlow: StateFlow<Float> = _distance
@@ -56,6 +63,7 @@ constructor(private val app: Application, private val tripDao: TripDao) {
     val eventCountFlow: StateFlow<Int> = _eventCount
     val gpsLastTs: StateFlow<Long> = _gpsLastTs
     val gpsAccuracyFlow: StateFlow<Float?> = _gpsAccuracy
+    val cameraTrigger: MutableSharedFlow<Float> = _cameraTrigger
 
     // IO Optimization: Buffer for writing to file
     private val readingBuffer = ArrayList<String>(60)
@@ -100,18 +108,17 @@ constructor(private val app: Application, private val tripDao: TripDao) {
     }
 
     suspend fun appendReading(reading: SensorReading) {
-        val line = "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
-                "${if (reading.latitude.isNaN()) "" else reading.latitude}," +
-                "${if (reading.longitude.isNaN()) "" else reading.longitude}," +
-                "${if (reading.altitude.isNaN()) "" else reading.altitude}," +
-                "${if (reading.speed.isNaN()) "" else reading.speed}," +
-                "${if (reading.accuracy.isNaN()) "" else reading.accuracy}," +
-                "${if (reading.bearing.isNaN()) "" else reading.bearing}\n"
-        
-        bufferMutex.withLock {
-            readingBuffer.add(line)
-        }
-        
+        val line =
+                "${reading.timestamp},${reading.accelX},${reading.accelY},${reading.accelZ},${reading.magnitude}," +
+                        "${if (reading.latitude.isNaN()) "" else reading.latitude}," +
+                        "${if (reading.longitude.isNaN()) "" else reading.longitude}," +
+                        "${if (reading.altitude.isNaN()) "" else reading.altitude}," +
+                        "${if (reading.speed.isNaN()) "" else reading.speed}," +
+                        "${if (reading.accuracy.isNaN()) "" else reading.accuracy}," +
+                        "${if (reading.bearing.isNaN()) "" else reading.bearing}\n"
+
+        bufferMutex.withLock { readingBuffer.add(line) }
+
         if (readingBuffer.size >= BATCH_SIZE) {
             flushBufferSuspend()
         }
@@ -151,12 +158,33 @@ constructor(private val app: Application, private val tripDao: TripDao) {
         return updated
     }
 
+    suspend fun triggerCamera(magnitude: Float) {
+        _cameraTrigger.tryEmit(magnitude)
+    }
+
+    suspend fun saveCameraEvent(path: String, magnitude: Float) {
+        val trip = currentTrip ?: return
+        val eventId = UUID.randomUUID().toString()
+        val event =
+                CameraEvent(
+                        eventId = eventId,
+                        tripId = trip.tripId,
+                        timestamp = System.currentTimeMillis(),
+                        latitude = lastLat,
+                        longitude = lastLon,
+                        imagePath = path,
+                        triggerMagnitude = magnitude
+                )
+        tripDao.insertCameraEvent(event)
+    }
+
     private suspend fun flushBufferSuspend() {
-        val chunk = bufferMutex.withLock {
-            val c = ArrayList(readingBuffer)
-            readingBuffer.clear()
-            c
-        }
+        val chunk =
+                bufferMutex.withLock {
+                    val c = ArrayList(readingBuffer)
+                    readingBuffer.clear()
+                    c
+                }
         if (chunk.isNotEmpty()) {
             withContext(Dispatchers.IO) {
                 writer?.apply {

@@ -38,6 +38,7 @@ constructor(
     val recording: StateFlow<Boolean> = repo.recordingFlow
     val startTime: StateFlow<Long> = repo.startTimeFlow
     val eventCount: StateFlow<Int> = repo.eventCountFlow
+    val cameraTrigger: kotlinx.coroutines.flow.SharedFlow<Float> = repo.cameraTrigger
     private val _gpsActive = MutableStateFlow(false)
     val gpsActive: StateFlow<Boolean> = _gpsActive
     val gpsAccuracy: StateFlow<Float?> = repo.gpsAccuracyFlow
@@ -49,6 +50,10 @@ constructor(
             prefs.samplingRateFlow.stateIn(viewModelScope, SharingStarted.Lazily, 50)
     val sensitivityThreshold: StateFlow<Float> =
             prefs.sensitivityFlow.stateIn(viewModelScope, SharingStarted.Lazily, 2.0f)
+
+    fun saveCameraEvent(path: String, magnitude: Float) {
+        viewModelScope.launch { repo.saveCameraEvent(path, magnitude) }
+    }
 
     init {
         viewModelScope.launch {

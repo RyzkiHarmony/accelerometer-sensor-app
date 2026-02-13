@@ -74,7 +74,19 @@ constructor(
                 val file = File(trip.dataFilePath)
                 val fileBody = file.asRequestBody("text/csv".toMediaType())
                 val filePart = MultipartBody.Part.createFormData("file", file.name, fileBody)
-                val resp = api.uploadTrip(userIdBody, tripIdBody, metadataBody, filePart)
+                
+                val events = tripDao.getCameraEvents(trip.tripId)
+                val imageParts = events.mapNotNull { event ->
+                    val imgFile = File(event.imagePath)
+                    if (imgFile.exists()) {
+                        val requestFile = imgFile.asRequestBody("image/jpeg".toMediaType())
+                        MultipartBody.Part.createFormData("images", imgFile.name, requestFile)
+                    } else {
+                        null
+                    }
+                }
+
+                val resp = api.uploadTrip(userIdBody, tripIdBody, metadataBody, filePart, imageParts)
                 val ok = resp.isSuccessful && (resp.body()?.success == true)
                 if (ok) {
                     tripDao.upsert(trip.copy(uploadStatus = UploadStatus.UPLOADED))

@@ -7,9 +7,19 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
+import android.provider.Settings as AndroidSettings
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,9 +72,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.pemalang.roaddamage.recording.RecordingService
+import java.io.File
 import kotlinx.coroutines.delay
 
 private val DarkBg = Color(0xFF1A1D26)
@@ -98,6 +113,85 @@ fun HomeScreen(
         val samplingRate = vm.samplingRate.collectAsState()
         val sensitivity = vm.sensitivityThreshold.collectAsState()
         val eventCount = vm.eventCount.collectAsState()
+        val cameraTrigger = vm.cameraTrigger.collectAsState(initial = 0f)
+
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(ctx) }
+        val imageCapture = remember {
+                ImageCapture.Builder()
+                        .setResolutionSelector(
+                                ResolutionSelector.Builder()
+                                        .setResolutionStrategy(
+                                                ResolutionStrategy(
+                                                        android.util.Size(1280, 720),
+                                                        ResolutionStrategy
+                                                                .FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                                                )
+                                        )
+                                        .build()
+                        )
+                        .build()
+        }
+        val camPermissionGranted = remember {
+                mutableStateOf(
+                        ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
+                                PackageManager.PERMISSION_GRANTED
+                )
+        }
+
+        // Trigger Logic
+        LaunchedEffect(Unit) {
+                vm.cameraTrigger.collect { mag ->
+                        if (mag > 0 && isRecording.value && camPermissionGranted.value) {
+                                delay(300) // Anti-blur
+                                try {
+                                        val photoFile =
+                                                File(
+                                                        ctx.getExternalFilesDir(null),
+                                                        "IMG_${System.currentTimeMillis()}.jpg"
+                                                )
+                                        val outputOptions =
+                                                ImageCapture.OutputFileOptions.Builder(photoFile)
+                                                        .build()
+                                        imageCapture.takePicture(
+                                                outputOptions,
+                                                ContextCompat.getMainExecutor(ctx),
+                                                object : ImageCapture.OnImageSavedCallback {
+                                                        override fun onError(
+                                                                exc: ImageCaptureException
+                                                        ) {
+                                                                Log.e(
+                                                                        "Camera",
+                                                                        "Capture failed",
+                                                                        exc
+                                                                )
+                                                        }
+
+                                                        override fun onImageSaved(
+                                                                output:
+                                                                        ImageCapture.OutputFileResults
+                                                        ) {
+                                                                vm.saveCameraEvent(
+                                                                        photoFile.absolutePath,
+                                                                        mag
+                                                                )
+                                                                Toast.makeText(
+                                                                                ctx,
+                                                                                "Foto diambil! (%.1f G)".format(
+                                                                                        mag
+                                                                                ),
+                                                                                Toast.LENGTH_SHORT
+                                                                        )
+                                                                        .show()
+                                                        }
+                                                }
+                                        )
+                                } catch (e: Exception) {
+                                        Log.e("Camera", "Error", e)
+                                }
+                        }
+                }
+        }
 
         // Permission State
         var showRationale by remember { mutableStateOf(false) }
@@ -108,7 +202,8 @@ fun HomeScreen(
                 val perms =
                         mutableListOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                Manifest.permission.CAMERA
                         )
                 if (Build.VERSION.SDK_INT >= 33) {
                         perms.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -125,11 +220,13 @@ fun HomeScreen(
                         val locGranted =
                                 res[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
                                         res[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                        val camGranted = res[Manifest.permission.CAMERA] == true
+                        camPermissionGranted.value = camGranted
                         val notifGranted =
                                 Build.VERSION.SDK_INT < 33 ||
                                         res[Manifest.permission.POST_NOTIFICATIONS] == true
 
-                        if (locGranted && notifGranted) {
+                        if (locGranted && camGranted && notifGranted) {
                                 startService(ctx, RecordingService.ACTION_START)
                         } else {
                                 // Check if we should show rationale (if false, it might mean
@@ -157,7 +254,7 @@ fun HomeScreen(
                         title = { Text("Izin Diperlukan") },
                         text = {
                                 Text(
-                                        "Aplikasi ini membutuhkan akses lokasi untuk merekam jejak perjalanan dan mendeteksi kerusakan jalan. Mohon izinkan akses."
+                                        "Aplikasi ini membutuhkan akses lokasi dan kamera untuk merekam jejak perjalanan, mendeteksi kerusakan jalan, dan mengambil foto konteks kerusakan. Mohon izinkan akses."
                                 )
                         },
                         confirmButton = {
@@ -192,7 +289,8 @@ fun HomeScreen(
                                                 showSettingsRedirect = false
                                                 val intent =
                                                         Intent(
-                                                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                                                                        AndroidSettings
+                                                                                .ACTION_APPLICATION_DETAILS_SETTINGS
                                                                 )
                                                                 .apply {
                                                                         data =
@@ -232,7 +330,8 @@ fun HomeScreen(
                                                 showGpsDialog = false
                                                 val intent =
                                                         Intent(
-                                                                Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                                                                AndroidSettings
+                                                                        .ACTION_LOCATION_SOURCE_SETTINGS
                                                         )
                                                 ctx.startActivity(intent)
                                         }
@@ -261,6 +360,49 @@ fun HomeScreen(
                         delay(1000)
                 }
                 if (!isRecording.value) timerText.value = "00:00"
+        }
+
+        val cameraContent: @Composable () -> Unit = {
+                if (camPermissionGranted.value) {
+                        val previewView = remember { PreviewView(ctx) }
+                        LaunchedEffect(previewView, isRecording.value) {
+                                if (isRecording.value) {
+                                        try {
+                                                val cameraProvider = cameraProviderFuture.get()
+                                                val preview = Preview.Builder().build()
+                                                preview.setSurfaceProvider(
+                                                        previewView.surfaceProvider
+                                                )
+                                                cameraProvider.unbindAll()
+                                                cameraProvider.bindToLifecycle(
+                                                        lifecycleOwner,
+                                                        CameraSelector.DEFAULT_BACK_CAMERA,
+                                                        preview,
+                                                        imageCapture
+                                                )
+                                        } catch (e: Exception) {
+                                                Log.e("Camera", "Bind error", e)
+                                        }
+                                } else {
+                                        try {
+                                                val cameraProvider = cameraProviderFuture.get()
+                                                cameraProvider.unbindAll()
+                                        } catch (e: Exception) {}
+                                }
+                        }
+                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
+                } else {
+                        Box(
+                                Modifier.fillMaxSize().background(Color(0xFF2C3240)),
+                                contentAlignment = Alignment.Center
+                        ) {
+                                Text(
+                                        "Camera Permission Required",
+                                        color = Color.White,
+                                        fontSize = 10.sp
+                                )
+                        }
+                }
         }
 
         if (!isRecording.value) {
@@ -309,7 +451,8 @@ fun HomeScreen(
                         accelY = ay.value.lastOrNull() ?: 0f,
                         samplingRate = samplingRate.value,
                         sensitivity = sensitivity.value,
-                        eventCount = eventCount.value
+                        eventCount = eventCount.value,
+                        cameraPreview = cameraContent
                 )
         } else {
                 ActiveSessionScreen(
@@ -319,7 +462,8 @@ fun HomeScreen(
                         ay = ay.value,
                         az = az.value,
                         gpsActive = gpsActive.value,
-                        onStop = { startService(ctx, RecordingService.ACTION_STOP) }
+                        onStop = { startService(ctx, RecordingService.ACTION_STOP) },
+                        cameraPreview = cameraContent
                 )
         }
 }
@@ -335,7 +479,8 @@ fun DashboardScreen(
         accelY: Float,
         samplingRate: Int,
         sensitivity: Float,
-        eventCount: Int
+        eventCount: Int,
+        cameraPreview: @Composable () -> Unit
 ) {
         Scaffold(
                 containerColor = DarkBg,
@@ -387,7 +532,10 @@ fun DashboardScreen(
                 }
         ) { padding ->
                 Column(
-                        modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                        modifier = Modifier.fillMaxSize()
+                                .padding(padding)
+                                .verticalScroll(rememberScrollState())
+                                .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                         // Header
@@ -429,35 +577,7 @@ fun DashboardScreen(
                                 modifier = Modifier.fillMaxWidth().height(180.dp)
                         ) {
                                 Box(modifier = Modifier.fillMaxSize()) {
-                                        // Simulated Map background
-                                        Canvas(modifier = Modifier.fillMaxSize()) {
-                                                drawRect(color = Color(0xFF2C3240))
-                                                // Draw some grid lines
-                                                val step = 50.dp.toPx()
-                                                for (i in 0..size.width.toInt() step step.toInt()) {
-                                                        drawLine(
-                                                                color = Color(0xFF353B4B),
-                                                                start = Offset(i.toFloat(), 0f),
-                                                                end =
-                                                                        Offset(
-                                                                                i.toFloat(),
-                                                                                size.height
-                                                                        )
-                                                        )
-                                                }
-                                                for (i in
-                                                        0..size.height.toInt() step step.toInt()) {
-                                                        drawLine(
-                                                                color = Color(0xFF353B4B),
-                                                                start = Offset(0f, i.toFloat()),
-                                                                end =
-                                                                        Offset(
-                                                                                size.width,
-                                                                                i.toFloat()
-                                                                        )
-                                                        )
-                                                }
-                                        }
+                                        cameraPreview()
 
                                         Column(
                                                 modifier =
@@ -706,7 +826,8 @@ fun ActiveSessionScreen(
         ay: List<Float>,
         az: List<Float>,
         gpsActive: Boolean,
-        onStop: () -> Unit
+        onStop: () -> Unit,
+        cameraPreview: @Composable () -> Unit
 ) {
         Scaffold(
                 containerColor = DarkBg,
@@ -792,6 +913,27 @@ fun ActiveSessionScreen(
                                                                 ),
                                                 modifier = Modifier.height(30.dp)
                                         ) { Text("Hide", fontSize = 10.sp, color = TextPrimary) }
+                                }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Camera Preview
+                        Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.Black),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().height(120.dp)
+                        ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                        cameraPreview()
+                                        Text(
+                                                "Visual Context",
+                                                color = Color.White.copy(alpha = 0.7f),
+                                                fontSize = 10.sp,
+                                                modifier =
+                                                        Modifier.align(Alignment.BottomEnd)
+                                                                .padding(8.dp)
+                                        )
                                 }
                         }
 

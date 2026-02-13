@@ -24,6 +24,16 @@ class GPSHandler(private val app: Application, private val intervalSec: Long) {
 
     @SuppressLint("MissingPermission")
     suspend fun start() {
+        // Try to get last known location immediately
+        try {
+            val lastLoc = client.lastLocation.await()
+            if (lastLoc != null) {
+                locations.tryEmit(lastLoc)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         // Best Practice: Allow batching to save battery.
         // setMaxUpdateDelayMillis allows the system to batch location updates.
         // We set it to 2x the interval or at least 5 seconds.

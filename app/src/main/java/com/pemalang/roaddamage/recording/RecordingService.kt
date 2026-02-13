@@ -8,11 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.SensorManager
 import android.location.Location
+import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -22,6 +25,7 @@ import com.pemalang.roaddamage.model.SensorReading
 import com.pemalang.roaddamage.model.Trip
 import com.pemalang.roaddamage.sensors.AccelerometerHandler
 import com.pemalang.roaddamage.sensors.GPSHandler
+import com.pemalang.roaddamage.work.TripUploadWorker
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -29,22 +33,30 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 @AndroidEntryPoint
 class RecordingService : Service() {
+
     @Inject lateinit var userPrefs: UserPrefs
     @Inject lateinit var repository: RecordingRepository
 
-    private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     private var scope: CoroutineScope? = null
     private var accel: AccelerometerHandler? = null
     private var gps: GPSHandler? = null
     private var collectingJob: Job? = null
     private var latestLocation: Location? = null
+    private var lastTriggerTime: Long = 0
+    private val COOLDOWN_MS = 2000L // 2 seconds cooldown
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
@@ -64,23 +76,22 @@ class RecordingService : Service() {
         startForeground(NOTIF_ID, buildNotification("Merekam data"))
 
         // Acquire WakeLock
-        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        wakeLock =
-                pm.newWakeLock(
-                        android.os.PowerManager.PARTIAL_WAKE_LOCK,
-                        "RoadDamageDetector::Recording"
-                )
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RoadDamageDetector::Recording")
         wakeLock?.acquire(4 * 60 * 60 * 1000L) // Limit to 4 hours safety timeout
 
         val sManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val samplingHz = runBlocking { userPrefs.getSamplingRateHz() }
         val samplingUs = (1_000_000 / samplingHz).coerceAtLeast(5_000)
         val gpsInterval = runBlocking { userPrefs.getGpsIntervalSec() }
-        val threshold = runBlocking { userPrefs.getSensitivityThreshold() }
+        // Ensure threshold is at least 1.4G to prevent triggering on engine vibration (1.0G +
+        // noise)
+        val threshold = runBlocking { userPrefs.getSensitivityThreshold() }.coerceAtLeast(1.4f)
         accel = AccelerometerHandler(sManager, samplingUs)
         gps = GPSHandler(application, gpsInterval.toLong())
         scope = CoroutineScope(Dispatchers.Default)
         val sc = scope!!
+
         collectingJob =
                 sc.launch {
                     val userId = userPrefs.getOrCreateUserId()
@@ -101,6 +112,7 @@ class RecordingService : Service() {
 
                     gps?.locations?.collect { loc -> latestLocation = loc }
                 }
+
         scope?.launch {
             accel?.readings?.collect { arr ->
                 val x = arr[0]
@@ -128,8 +140,15 @@ class RecordingService : Service() {
                                 accuracy = acc,
                                 bearing = brg
                         )
-                if (m > threshold) {
+
+                // Convert magnitude (m/s^2) to G-Force for threshold comparison
+                val gForce = m / 9.80665f
+                val now = System.currentTimeMillis()
+
+                if (gForce > threshold && (now - lastTriggerTime > COOLDOWN_MS)) {
+                    lastTriggerTime = now
                     repository.incrementEventCount()
+                    repository.triggerCamera(gForce)
                 }
                 repository.appendReading(reading)
             }
@@ -151,6 +170,7 @@ class RecordingService : Service() {
         collectingJob?.cancel()
         scope?.cancel()
         scope = null
+
         launchFinish()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -180,7 +200,7 @@ class RecordingService : Service() {
                 Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()
 
         val request =
-                OneTimeWorkRequestBuilder<com.pemalang.roaddamage.work.TripUploadWorker>()
+                OneTimeWorkRequestBuilder<TripUploadWorker>()
                         .setInputData(input)
                         .setConstraints(constraints)
                         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
@@ -188,15 +208,11 @@ class RecordingService : Service() {
                         .build()
 
         WorkManager.getInstance(applicationContext)
-                .enqueueUniqueWork(
-                        "upload_trip_${trip.tripId}",
-                        androidx.work.ExistingWorkPolicy.KEEP,
-                        request
-                )
+                .enqueueUniqueWork("upload_trip_${trip.tripId}", ExistingWorkPolicy.KEEP, request)
     }
 
     private fun createChannel() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val ch =
                     NotificationChannel(CHANNEL_ID, "Recording", NotificationManager.IMPORTANCE_LOW)

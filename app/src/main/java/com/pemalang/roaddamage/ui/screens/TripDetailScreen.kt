@@ -8,7 +8,9 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,12 +23,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.pemalang.roaddamage.model.CameraEvent
 import com.pemalang.roaddamage.model.UploadStatus
 import java.text.SimpleDateFormat
 import java.util.*
@@ -155,7 +160,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
             if (trip != null) {
                 // Map Section
                 Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    MapSection(ctx = ctx, points = ui.points)
+                    MapSection(ctx = ctx, points = ui.points, cameraEvents = ui.cameraEvents)
 
                     // Overlay stats on map bottom
                     Row(
@@ -198,11 +203,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                    "Vertical acceleration (Z Axis)",
-                                    color = TextSecondary,
-                                    fontSize = 10.sp
-                            )
+                            Text("Accelerometer Magnitude", color = TextSecondary, fontSize = 10.sp)
 
                             Spacer(modifier = Modifier.height(16.dp))
 
@@ -211,6 +212,86 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit = {}) {
                                     magnitudes = ui.magnitudes,
                                     modifier = Modifier.fillMaxWidth().weight(1f)
                             )
+                        }
+                    }
+
+                    if (ui.cameraEvents.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Gallery Section
+                        Card(
+                                colors = CardDefaults.cardColors(containerColor = CardBg),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                            Icons.Default.PhotoCamera,
+                                            null,
+                                            tint = AccentGreen,
+                                            modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                            "Captured Photos (${ui.cameraEvents.size})",
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                androidx.compose.foundation.lazy.LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(ui.cameraEvents.size) { i ->
+                                        val event = ui.cameraEvents[i]
+                                        val file = java.io.File(event.imagePath)
+                                        if (file.exists()) {
+                                            val bitmap =
+                                                    remember(file) {
+                                                        android.graphics.BitmapFactory.decodeFile(
+                                                                file.absolutePath
+                                                        )
+                                                    }
+                                            if (bitmap != null) {
+                                                Column(
+                                                        horizontalAlignment =
+                                                                Alignment.CenterHorizontally
+                                                ) {
+                                                    androidx.compose.foundation.Image(
+                                                            bitmap = bitmap.asImageBitmap(),
+                                                            contentDescription = null,
+                                                            contentScale =
+                                                                    androidx.compose.ui.layout
+                                                                            .ContentScale.Crop,
+                                                            modifier =
+                                                                    Modifier.size(100.dp)
+                                                                            .background(
+                                                                                    Color.Black,
+                                                                                    RoundedCornerShape(
+                                                                                            8.dp
+                                                                                    )
+                                                                            )
+                                                                            .border(
+                                                                                    1.dp,
+                                                                                    Color.Gray,
+                                                                                    RoundedCornerShape(
+                                                                                            8.dp
+                                                                                    )
+                                                                            )
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                            "${event.triggerMagnitude} G",
+                                                            color = TextSecondary,
+                                                            fontSize = 10.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -366,7 +447,11 @@ private fun markerDrawable(ctx: Context, color: Int): BitmapDrawable {
 }
 
 @Composable
-private fun MapSection(ctx: Context, points: List<Pair<Double, Double>>) {
+private fun MapSection(
+        ctx: Context,
+        points: List<Pair<Double, Double>>,
+        cameraEvents: List<CameraEvent> = emptyList()
+) {
     val appCtx = ctx.applicationContext
     val base = remember { java.io.File(appCtx.cacheDir, "osmdroid") }
     val tiles = remember { java.io.File(base, "tiles") }
@@ -475,6 +560,28 @@ private fun MapSection(ctx: Context, points: List<Pair<Double, Double>>) {
                             }
                     mapView.overlays.add(startMarker)
                     mapView.overlays.add(endMarker)
+
+                    // Camera Markers
+                    cameraEvents.forEach { event ->
+                        if (event.latitude != null && event.longitude != null) {
+                            val marker =
+                                    Marker(mapView).apply {
+                                        position = GeoPoint(event.latitude, event.longitude)
+                                        title = "Foto (${event.triggerMagnitude} G)"
+                                        icon =
+                                                markerDrawable(
+                                                        ctx,
+                                                        AndroidColor.YELLOW
+                                                ) // Use yellow for photos
+                                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                        setOnMarkerClickListener { m, _ ->
+                                            m.showInfoWindow()
+                                            true
+                                        }
+                                    }
+                            mapView.overlays.add(marker)
+                        }
+                    }
 
                     // Center map
                     if (geoPoints.isNotEmpty()) {

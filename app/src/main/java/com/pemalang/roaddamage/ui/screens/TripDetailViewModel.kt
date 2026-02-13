@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+import com.pemalang.roaddamage.model.CameraEvent
+
 @HiltViewModel
 class TripDetailViewModel
 @Inject
@@ -36,7 +38,8 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
     data class UiState(
             val trip: Trip? = null,
             val points: List<Pair<Double, Double>> = emptyList(),
-            val magnitudes: List<Float> = emptyList()
+            val magnitudes: List<Float> = emptyList(),
+            val cameraEvents: List<CameraEvent> = emptyList()
     )
     sealed class Event {
         object Deleted : Event()
@@ -61,6 +64,7 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
         }
         val pts = mutableListOf<Pair<Double, Double>>()
         val mags = mutableListOf<Float>()
+        val camEvents = tripDao.getCameraEvents(tripId)
         try {
             val file = File(trip.dataFilePath)
             if (file.exists()) {
@@ -95,7 +99,7 @@ constructor(private val app: Application, private val tripDao: TripDao) : ViewMo
         } catch (t: Throwable) {
             events.tryEmit(Event.Error("Gagal membaca file: ${t.message ?: ""}"))
         }
-        _ui.value = UiState(trip = trip, points = pts, magnitudes = mags)
+        _ui.value = UiState(trip = trip, points = pts, magnitudes = mags, cameraEvents = camEvents)
     }
 
     fun enqueueUpload() {

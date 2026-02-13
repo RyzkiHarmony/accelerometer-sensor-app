@@ -281,17 +281,15 @@ fun TripListScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filteredTrips, key = { it.tripId }) { trip ->
-                        val dismissState =
-                                rememberSwipeToDismissBoxState(
-                                        confirmValueChange = {
-                                            if (it == SwipeToDismissBoxValue.EndToStart) {
-                                                tripToDelete = trip
-                                                false
-                                            } else {
-                                                false
-                                            }
-                                        }
-                                )
+                        @Suppress("DEPRECATION")
+                        val dismissState = rememberSwipeToDismissBoxState()
+                        
+                        LaunchedEffect(dismissState.currentValue) {
+                            if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                                tripToDelete = trip
+                                dismissState.reset()
+                            }
+                        }
 
                         SwipeToDismissBox(
                                 state = dismissState,

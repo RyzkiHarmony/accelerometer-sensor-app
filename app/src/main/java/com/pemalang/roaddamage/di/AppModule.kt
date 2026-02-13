@@ -2,10 +2,6 @@ package com.pemalang.roaddamage.di
 
 import android.app.Application
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import com.pemalang.roaddamage.data.local.AppDatabase
@@ -15,13 +11,11 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import javax.inject.Singleton
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -29,11 +23,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(app: Application): AppDatabase {
-        return Room.databaseBuilder(app, AppDatabase::class.java, "rdd.db").build()
+        return Room.databaseBuilder(app, AppDatabase::class.java, "rdd.db")
+                .fallbackToDestructiveMigration(true)
+                .build()
     }
 
-    @Provides
-    fun provideTripDao(db: AppDatabase): TripDao = db.tripDao()
+    @Provides fun provideTripDao(db: AppDatabase): TripDao = db.tripDao()
 
     @Provides
     @Singleton
@@ -46,10 +41,10 @@ object AppModule {
     @Singleton
     fun provideRetrofit(client: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://example.com/")
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
+                .baseUrl("https://example.com/")
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
     }
 
     @Provides
@@ -58,8 +53,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDataStore(app: Application) = PreferenceDataStoreFactory.create(
-        produceFile = { app.preferencesDataStoreFile("settings") }
-    )
+    fun provideDataStore(app: Application) =
+            PreferenceDataStoreFactory.create(
+                    produceFile = { app.preferencesDataStoreFile("settings") }
+            )
 }
-

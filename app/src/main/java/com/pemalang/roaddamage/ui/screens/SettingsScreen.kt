@@ -221,20 +221,21 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateHome: () -> Unit, onNavigateTri
                                         }
                                 }
 
-                                // Sensitivity Threshold
-                ParameterCard(
-                    title = "Ambang Batas (Threshold)",
-                    subtitle = "Semakin kecil angka = Semakin sensitif",
-                    value = String.format("%.1f G", sliderSensitivity)
-                ) {
+                                // Sensitivity Threshold / Camera Trigger
+                                ParameterCard(
+                                        title = "Trigger Kamera (G-Force)",
+                                        subtitle = "Minimal guncangan untuk ambil foto",
+                                        value = String.format("%.1f G", sliderSensitivity)
+                                ) {
+                                        // Slider
                                         Slider(
                                                 value = sliderSensitivity,
                                                 onValueChange = { sliderSensitivity = it },
                                                 onValueChangeFinished = {
                                                         vm.setSensitivity(sliderSensitivity)
                                                 },
-                                                valueRange = 0.5f..5.0f,
-                                                steps = 9, // (5.0 - 0.5) / 0.5 = 9 steps
+                                                valueRange = 1.4f..100.0f,
+                                                steps = 985, // (100.0 - 1.4) / 0.1 ~= 986 steps
                                                 colors =
                                                         SliderDefaults.colors(
                                                                 thumbColor = AccentGreen,
@@ -242,22 +243,76 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateHome: () -> Unit, onNavigateTri
                                                                 inactiveTrackColor = CardBg
                                                         )
                                         )
+
+                                        // Manual Input Column
                                         Row(
                                                 modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                                 Text(
-                                                        "0.5G",
+                                                        "Min: 1.4G",
                                                         color = TextSecondary,
                                                         fontSize = 10.sp
                                                 )
-                                                Text(
-                                                        "2.5G",
-                                                        color = TextSecondary,
-                                                        fontSize = 10.sp
+
+                                                // Input Field
+                                                androidx.compose.material3.OutlinedTextField(
+                                                        value =
+                                                                if (sliderSensitivity == 0f) ""
+                                                                else
+                                                                        "%.1f".format(
+                                                                                java.util.Locale.US,
+                                                                                sliderSensitivity
+                                                                        ),
+                                                        onValueChange = { str ->
+                                                                val num = str.toFloatOrNull()
+                                                                if (num != null &&
+                                                                                num in 1.4f..100.0f
+                                                                ) {
+                                                                        sliderSensitivity = num
+                                                                        vm.setSensitivity(num)
+                                                                }
+                                                        },
+                                                        label = {
+                                                                Text("Input G", fontSize = 10.sp)
+                                                        },
+                                                        singleLine = true,
+                                                        keyboardOptions =
+                                                                androidx.compose.foundation.text
+                                                                        .KeyboardOptions(
+                                                                                keyboardType =
+                                                                                        androidx.compose
+                                                                                                .ui
+                                                                                                .text
+                                                                                                .input
+                                                                                                .KeyboardType
+                                                                                                .Decimal
+                                                                        ),
+                                                        modifier =
+                                                                Modifier.width(80.dp).height(56.dp),
+                                                        textStyle =
+                                                                androidx.compose.ui.text.TextStyle(
+                                                                        fontSize = 12.sp,
+                                                                        color = TextPrimary
+                                                                ),
+                                                        colors =
+                                                                androidx.compose.material3
+                                                                        .OutlinedTextFieldDefaults
+                                                                        .colors(
+                                                                                focusedBorderColor =
+                                                                                        AccentGreen,
+                                                                                unfocusedBorderColor =
+                                                                                        TextSecondary,
+                                                                                focusedLabelColor =
+                                                                                        AccentGreen,
+                                                                                unfocusedLabelColor =
+                                                                                        TextSecondary
+                                                                        )
                                                 )
+
                                                 Text(
-                                                        "5.0G",
+                                                        "Max: 100G",
                                                         color = TextSecondary,
                                                         fontSize = 10.sp
                                                 )
